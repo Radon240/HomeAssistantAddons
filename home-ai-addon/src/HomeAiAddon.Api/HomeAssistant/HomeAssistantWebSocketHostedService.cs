@@ -1,0 +1,447 @@
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
+
+namespace HomeAiAddon.Api.HomeAssistant;
+
+/// <summary>
+/// Фоновый сервис: WebSocket API Home Assistant (аутентификация, subscribe_events на state_changed),
+/// повторные подключения с экспоненциальной задержкой, корректное завершение по <see cref="CancellationToken"/>.
+/// </summary>
+public sealed class HomeAssistantWebSocketHostedService(
+    ILogger<HomeAssistantWebSocketHostedService> logger,
+    IOptionsMonitor<HomeAssistantIntegrationOptions> optionsMonitor,
+    IHomeAssistantAccessTokenProvider accessTokenProvider,
+    HomeAssistantConnectionState connectionState,
+    IHttpClientFactory httpClientFactory) : BackgroundService
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    private int _reconnectAttempt;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        logger.LogInformation("Home Assistant WebSocket worker started.");
+
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                var baseUrl = optionsMonitor.CurrentValue.BaseUrl;
+                var token = accessTokenProvider.GetAccessToken();
+                var baseConfigured = HomeAssistantUriHelper.TryGetHttpOrigin(baseUrl, out var origin);
+                var tokenConfigured = !string.IsNullOrEmpty(token);
+
+                if (!baseConfigured || !tokenConfigured)
+                {
+                    connectionState.SetWebSocketConnected(false);
+                    connectionState.RecordError(
+                        !baseConfigured && !tokenConfigured
+                            ? "Не заданы базовый URL и токен (см. HomeAssistant:BaseUrl / home_assistant_base_url и переменную HOME_ASSISTANT_ACCESS_TOKEN)."
+                            : !baseConfigured
+                                ? "Не задан базовый URL Home Assistant."
+                                : "Не задан токен в переменной окружения HOME_ASSISTANT_ACCESS_TOKEN.");
+
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                connectionState.ClearLastError();
+
+                try
+                {
+                    await using var session = await HomeAssistantWebSocketSession.ConnectAndRunAsync(
+                        logger,
+                        connectionState,
+                        httpClientFactory,
+                        origin,
+                        token!,
+                        stoppingToken);
+
+                    _reconnectAttempt = 0;
+                    await session.RunReceiveLoopAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    connectionState.SetWebSocketConnected(false);
+                    var message = SanitizeError(ex.Message);
+                    connectionState.RecordError(message);
+                    logger.LogWarning(ex, "Home Assistant WebSocket session завершилась с ошибкой.");
+
+                    var delay = ComputeBackoffDelay(_reconnectAttempt);
+                    _reconnectAttempt = Math.Min(_reconnectAttempt + 1, 30);
+
+                    try
+                    {
+                        await Task.Delay(delay, stoppingToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            connectionState.SetWebSocketConnected(false);
+            logger.LogInformation("Home Assistant WebSocket worker stopped.");
+        }
+    }
+
+    private static TimeSpan ComputeBackoffDelay(int attempt)
+    {
+        var seconds = Math.Min(60, Math.Pow(2, Math.Min(attempt, 10)));
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static string SanitizeError(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "Неизвестная ошибка.";
+        }
+
+        var line = message.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault() ?? message;
+        return line.Length > 500 ? line[..500] : line;
+    }
+
+    private sealed class HomeAssistantWebSocketSession : IAsyncDisposable
+    {
+        private readonly ClientWebSocket _webSocket = new();
+        private readonly ILogger _logger;
+        private readonly HomeAssistantConnectionState _connectionState;
+        private int _nextMessageId;
+
+        private HomeAssistantWebSocketSession(
+            ILogger logger,
+            HomeAssistantConnectionState connectionState)
+        {
+            _logger = logger;
+            _connectionState = connectionState;
+        }
+
+        public static async Task<HomeAssistantWebSocketSession> ConnectAndRunAsync(
+            ILogger logger,
+            HomeAssistantConnectionState connectionState,
+            IHttpClientFactory httpClientFactory,
+            Uri httpOrigin,
+            string accessToken,
+            CancellationToken cancellationToken)
+        {
+            var session = new HomeAssistantWebSocketSession(logger, connectionState);
+
+            await session.PingRestApiAsync(httpClientFactory, cancellationToken).ConfigureAwait(false);
+
+            var wsUri = HomeAssistantUriHelper.BuildWebSocketUri(httpOrigin);
+            await session._webSocket.ConnectAsync(wsUri, cancellationToken).ConfigureAwait(false);
+
+            await session.PerformAuthenticationAsync(accessToken, cancellationToken).ConfigureAwait(false);
+            await session.SubscribeStateChangedAsync(cancellationToken).ConfigureAwait(false);
+
+            connectionState.SetWebSocketConnected(true);
+            return session;
+        }
+
+        private async Task PingRestApiAsync(
+            IHttpClientFactory httpClientFactory,
+            CancellationToken cancellationToken)
+        {
+            var client = httpClientFactory.CreateClient("HomeAssistant");
+            using var response = await client.GetAsync("/api/", HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException(
+                    $"Home Assistant REST /api/ вернул {(int)response.StatusCode} {response.ReasonPhrase}. Проверьте BaseUrl и токен.");
+            }
+        }
+
+        private async Task PerformAuthenticationAsync(string accessToken, CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var text = await ReceiveTextMessageAsync(_webSocket, cancellationToken).ConfigureAwait(false);
+                if (text is null)
+                {
+                    throw new InvalidOperationException("WebSocket закрыт до завершения аутентификации.");
+                }
+
+                using var doc = JsonDocument.Parse(text);
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("type", out var typeProp) || typeProp.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var type = typeProp.GetString();
+                switch (type)
+                {
+                    case "auth_required":
+                        await SendJsonAsync(
+                                _webSocket,
+                                new { type = "auth", access_token = accessToken },
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        break;
+                    case "auth_ok":
+                        _logger.LogInformation("Home Assistant WebSocket: аутентификация успешна.");
+                        return;
+                    case "auth_invalid":
+                        throw new InvalidOperationException(
+                            "Home Assistant отклонил токен (auth_invalid). Выпустите новый long-lived access token.");
+                    default:
+                        _logger.LogDebug("Home Assistant WebSocket (до auth_ok): пропуск сообщения типа {Type}.", type);
+                        break;
+                }
+            }
+
+            throw new OperationCanceledException();
+        }
+
+        private async Task SubscribeStateChangedAsync(CancellationToken cancellationToken)
+        {
+            var id = Interlocked.Increment(ref _nextMessageId);
+            await SendJsonAsync(
+                    _webSocket,
+                    new
+                    {
+                        id,
+                        type = "subscribe_events",
+                        event_type = "state_changed"
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var text = await ReceiveTextMessageAsync(_webSocket, cancellationToken).ConfigureAwait(false);
+                if (text is null)
+                {
+                    throw new InvalidOperationException("WebSocket закрыт до подтверждения подписки.");
+                }
+
+                using var doc = JsonDocument.Parse(text);
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("type", out var typeProp) || typeProp.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var type = typeProp.GetString();
+                if (type == "result")
+                {
+                    if (root.TryGetProperty("id", out var msgId) && msgId.ValueKind == JsonValueKind.Number &&
+                        msgId.TryGetInt32(out var rid) && rid != id)
+                    {
+                        continue;
+                    }
+
+                    if (!TryReadResultSuccess(root, out var success, out var error))
+                    {
+                        continue;
+                    }
+
+                    if (!success)
+                    {
+                        throw new InvalidOperationException(
+                            $"Подписка на state_changed отклонена: {error ?? "неизвестная ошибка"}.");
+                    }
+
+                    _logger.LogInformation("Home Assistant WebSocket: подписка на state_changed активна (id={Id}).", id);
+                    return;
+                }
+
+                if (type == "event")
+                {
+                    HandleIncomingEvent(root);
+                    continue;
+                }
+
+                if (type == "ping")
+                {
+                    await SendJsonAsync(_webSocket, new { type = "pong" }, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            throw new OperationCanceledException();
+        }
+
+        public async Task RunReceiveLoopAsync(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested && _webSocket.State == WebSocketState.Open)
+            {
+                string? text;
+                try
+                {
+                    text = await ReceiveTextMessageAsync(_webSocket, cancellationToken).ConfigureAwait(false);
+                }
+                catch (ConnectionClosedException)
+                {
+                    _connectionState.SetWebSocketConnected(false);
+                    return;
+                }
+
+                if (text is null)
+                {
+                    _connectionState.SetWebSocketConnected(false);
+                    return;
+                }
+
+                using var doc = JsonDocument.Parse(text);
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("type", out var typeProp) || typeProp.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var type = typeProp.GetString();
+                switch (type)
+                {
+                    case "ping":
+                        await SendJsonAsync(_webSocket, new { type = "pong" }, cancellationToken).ConfigureAwait(false);
+                        break;
+                    case "event":
+                        HandleIncomingEvent(root);
+                        break;
+                    case "result":
+                        if (!TryReadResultSuccess(root, out var success, out var error))
+                        {
+                            break;
+                        }
+
+                        if (!success)
+                        {
+                            _logger.LogWarning("Home Assistant WebSocket: result с ошибкой: {Error}.", error);
+                        }
+
+                        break;
+                    default:
+                        _logger.LogDebug("Home Assistant WebSocket: неизвестный тип сообщения {Type}.", type);
+                        break;
+                }
+            }
+        }
+
+        private void HandleIncomingEvent(JsonElement root)
+        {
+            var receivedAt = DateTimeOffset.UtcNow;
+            if (!HomeAssistantEventNormalizer.TryNormalizeStateChanged(root, receivedAt, out var normalized) ||
+                normalized is null)
+            {
+                return;
+            }
+
+            _connectionState.AppendStateChange(normalized);
+            _logger.LogDebug(
+                "HA state_changed: {EntityId} -> {NewState} (было {OldState})",
+                normalized.EntityId,
+                normalized.NewState,
+                normalized.OldState);
+        }
+
+        private static bool TryReadResultSuccess(JsonElement root, out bool success, out string? error)
+        {
+            success = false;
+            error = null;
+            if (!root.TryGetProperty("success", out var successProp))
+            {
+                return false;
+            }
+
+            if (successProp.ValueKind != JsonValueKind.True && successProp.ValueKind != JsonValueKind.False)
+            {
+                return false;
+            }
+
+            success = successProp.GetBoolean();
+            if (!success && root.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.Object)
+            {
+                if (err.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String)
+                {
+                    error = msg.GetString();
+                }
+            }
+
+            return true;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                if (_webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "shutdown", cts.Token)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Игнорируемая ошибка при закрытии WebSocket.");
+            }
+            finally
+            {
+                _webSocket.Dispose();
+            }
+        }
+
+        private static async Task SendJsonAsync(ClientWebSocket ws, object payload, CancellationToken cancellationToken)
+        {
+            var json = JsonSerializer.Serialize(payload, JsonOptions);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            await ws.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private static async Task<string?> ReceiveTextMessageAsync(ClientWebSocket ws, CancellationToken cancellationToken)
+        {
+            using var buffer = new MemoryStream(capacity: 4096);
+            var segment = new byte[16384];
+            while (true)
+            {
+                var result = await ws.ReceiveAsync(segment, cancellationToken).ConfigureAwait(false);
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    throw new ConnectionClosedException();
+                }
+
+                if (result.MessageType == WebSocketMessageType.Binary)
+                {
+                    throw new InvalidOperationException("Неожиданное бинарное сообщение WebSocket от Home Assistant.");
+                }
+
+                buffer.Write(segment.AsSpan(0, result.Count));
+                if (result.EndOfMessage)
+                {
+                    break;
+                }
+            }
+
+            return Encoding.UTF8.GetString(buffer.ToArray());
+        }
+
+        private sealed class ConnectionClosedException : Exception;
+    }
+}

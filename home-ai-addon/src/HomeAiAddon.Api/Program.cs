@@ -1,10 +1,12 @@
 using HomeAiAddon.Api.Data;
 using HomeAiAddon.Api.Health;
+using HomeAiAddon.Api.HomeAssistant;
 using HomeAiAddon.Api.Options;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,6 +29,36 @@ builder.Services.AddOptions<AddonOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services.AddOptions<HomeAssistantIntegrationOptions>()
+    .Bind(builder.Configuration.GetSection(HomeAssistantIntegrationOptions.SectionName))
+    .PostConfigure<IConfiguration>((opts, cfg) =>
+    {
+        var flat = cfg["home_assistant_base_url"];
+        if (!string.IsNullOrWhiteSpace(flat))
+        {
+            opts.BaseUrl = flat;
+        }
+    });
+
+builder.Services.AddSingleton<HomeAssistantConnectionState>();
+builder.Services.AddSingleton<IHomeAssistantAccessTokenProvider, EnvironmentHomeAssistantAccessTokenProvider>();
+builder.Services.AddTransient<HomeAssistantBearerAuthHandler>();
+builder.Services.AddHttpClient("HomeAssistant")
+    .ConfigureHttpClient((sp, client) =>
+    {
+        var o = sp.GetRequiredService<IOptionsMonitor<HomeAssistantIntegrationOptions>>().CurrentValue;
+        if (HomeAssistantUriHelper.TryGetHttpOrigin(o.BaseUrl, out var origin))
+        {
+            client.BaseAddress = origin;
+        }
+
+        client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+    })
+    .AddHttpMessageHandler<HomeAssistantBearerAuthHandler>();
+
+builder.Services.AddHostedService<HomeAssistantWebSocketHostedService>();
+
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? "Data Source=/data/app.db";
 EnsureDatabaseDirectoryExists(connectionString);
@@ -35,7 +67,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString));
 
 builder.Services.AddHealthChecks()
-    .AddCheck<DatabaseHealthCheck>("database");
+    .AddCheck<DatabaseHealthCheck>("database")
+    .AddCheck<HomeAssistantIntegrationHealthCheck>("home_assistant");
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

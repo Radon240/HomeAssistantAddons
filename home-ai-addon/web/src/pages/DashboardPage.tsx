@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { HomeAssistantStatusCard } from "../components/HomeAssistantStatusCard";
 
 export function DashboardPage() {
   return (
@@ -17,6 +18,7 @@ export function DashboardPage() {
           </li>
         </ul>
       </section>
+      <HomeAssistantStatusCard />
     </div>
   );
 }

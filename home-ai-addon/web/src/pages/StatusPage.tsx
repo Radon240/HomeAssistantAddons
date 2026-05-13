@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchJson } from "../api/client";
+import { HomeAssistantStatusCard } from "../components/HomeAssistantStatusCard";
 
 type HealthResponse = {
   status: string;
@@ -84,6 +85,7 @@ export function StatusPage() {
 
   return (
     <div className="row">
+      <HomeAssistantStatusCard />
       <section className="card" style={{ display: "grid", gap: 12 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <h2 style={{ margin: 0 }}>Статус</h2>
