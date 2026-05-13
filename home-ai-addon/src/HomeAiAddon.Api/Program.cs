@@ -1,0 +1,110 @@
+using HomeAiAddon.Api.Data;
+using HomeAiAddon.Api.Health;
+using HomeAiAddon.Api.Options;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using System.Text.Json;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Configuration.AddJsonFile(
+    "/data/options.json",
+    optional: true,
+    reloadOnChange: true);
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+builder.Services.AddOptions<AddonOptions>()
+    .Bind(builder.Configuration)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+var connectionString = builder.Configuration.GetConnectionString("Default")
+    ?? "Data Source=/data/app.db";
+EnsureDatabaseDirectoryExists(connectionString);
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlite(connectionString));
+
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database");
+
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    });
+
+var app = builder.Build();
+
+app.UseForwardedHeaders();
+
+var pathBase = app.Configuration["ASPNETCORE_PATHBASE"];
+if (!string.IsNullOrWhiteSpace(pathBase))
+{
+    app.UsePathBase(pathBase);
+}
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = WriteHealthResponseAsync
+});
+
+app.MapControllers();
+app.MapFallbackToFile("index.html");
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await db.Database.MigrateAsync();
+}
+
+await app.RunAsync();
+
+static void EnsureDatabaseDirectoryExists(string sqliteConnectionString)
+{
+    const string prefix = "Data Source=";
+    if (!sqliteConnectionString.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+    {
+        return;
+    }
+
+    var relativeOrAbsolute = sqliteConnectionString[prefix.Length..].Trim();
+    var fullPath = Path.GetFullPath(relativeOrAbsolute);
+    var directory = Path.GetDirectoryName(fullPath);
+    if (!string.IsNullOrEmpty(directory))
+    {
+        Directory.CreateDirectory(directory);
+    }
+}
+
+static async Task WriteHealthResponseAsync(HttpContext context, HealthReport report)
+{
+    context.Response.ContentType = "application/json; charset=utf-8";
+    var payload = new
+    {
+        status = report.Status.ToString(),
+        totalDuration = report.TotalDuration.TotalMilliseconds,
+        checks = report.Entries.Select(e => new
+        {
+            name = e.Key,
+            status = e.Value.Status.ToString(),
+            durationMs = e.Value.Duration.TotalMilliseconds,
+            description = e.Value.Description,
+            data = e.Value.Data
+        })
+    };
+
+    await context.Response.WriteAsync(JsonSerializer.Serialize(payload));
+}
