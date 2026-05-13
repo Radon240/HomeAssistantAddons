@@ -1,5 +1,8 @@
+import { resolveBackendUrl } from "../utils/ingress";
+
 export async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
+  const url = resolveBackendUrl(input);
+  const response = await fetch(url, {
     ...init,
     headers: {
       Accept: "application/json",
