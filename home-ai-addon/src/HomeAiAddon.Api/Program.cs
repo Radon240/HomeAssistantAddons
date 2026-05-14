@@ -86,6 +86,28 @@ if (!string.IsNullOrWhiteSpace(pathBase))
     app.UsePathBase(pathBase);
 }
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Headers.TryGetValue("X-Ingress-Path", out var ingressPath))
+    {
+        var raw = ingressPath.ToString();
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            var trimmed = raw.TrimEnd('/');
+            if (trimmed.Length > 0 && trimmed.StartsWith('/'))
+            {
+                context.Request.PathBase = new PathString(trimmed);
+                if (context.Request.Path.StartsWithSegments(context.Request.PathBase, out var remaining))
+                {
+                    context.Request.Path = remaining;
+                }
+            }
+        }
+    }
+
+    await next();
+});
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
