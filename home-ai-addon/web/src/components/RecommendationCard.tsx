@@ -13,6 +13,7 @@ interface RecommendationCardProps {
 function buildFeedbackPayload(item: Recommendation) {
   const patternKey =
     item.patternKey?.trim() ||
+    item.sequence.map((step) => step.label).join("|") ||
     item.sequence.map((step) => step.entityId).join("|");
 
   return {

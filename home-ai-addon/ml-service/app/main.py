@@ -31,6 +31,7 @@ app = FastAPI(
     title="Home AI Behavior Analysis",
     version="0.1.0",
     lifespan=lifespan,
+    response_model_by_alias=True,
 )
 
 

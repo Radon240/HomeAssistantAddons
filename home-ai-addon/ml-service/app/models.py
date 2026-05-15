@@ -40,16 +40,20 @@ class AnalyzeRequest(BaseModel):
 
 class SequenceStep(BaseModel):
     label: str
-    entity_id: str
-    new_state: str | None
-    friendly_name: str | None = None
+    entity_id: str = Field(alias="entityId")
+    new_state: str | None = Field(default=None, alias="newState")
+    friendly_name: str | None = Field(default=None, alias="friendlyName")
+
+    model_config = {"populate_by_name": True}
 
 
 class SuggestedAutomation(BaseModel):
-    trigger_entity_id: str
-    trigger_to_state: str | None
-    action_entity_ids: list[str]
-    action_to_states: list[str | None]
+    trigger_entity_id: str = Field(alias="triggerEntityId")
+    trigger_to_state: str | None = Field(default=None, alias="triggerToState")
+    action_entity_ids: list[str] = Field(alias="actionEntityIds")
+    action_to_states: list[str | None] = Field(alias="actionToStates")
+
+    model_config = {"populate_by_name": True}
 
 
 class FeedbackRequest(BaseModel):
@@ -120,27 +124,29 @@ class Recommendation(BaseModel):
     id: str
     pattern_key: str = Field(alias="patternKey")
     sequence: list[SequenceStep]
-    support_count: int
-    session_count: int
+    support_count: int = Field(alias="supportCount")
+    session_count: int = Field(alias="sessionCount")
     confidence: float
     base_confidence: float = Field(alias="baseConfidence")
     feedback_score: float = Field(default=1.0, alias="feedbackScore")
-    frequency_score: float
+    frequency_score: float = Field(alias="frequencyScore")
     cadence: str
     cadence_confidence: float = Field(alias="cadenceConfidence")
     cadence_label: str = Field(alias="cadenceLabel")
     schedule_hint: str = Field(alias="scheduleHint")
     title: str
     description: str
-    suggested_automation: SuggestedAutomation
+    suggested_automation: SuggestedAutomation = Field(alias="suggestedAutomation")
 
     model_config = {"populate_by_name": True}
 
 
 class AnalyzeResponse(BaseModel):
-    analyzed_event_count: int
-    session_count: int
-    pattern_candidates: int
+    analyzed_event_count: int = Field(alias="analyzedEventCount")
+    session_count: int = Field(alias="sessionCount")
+    pattern_candidates: int = Field(alias="patternCandidates")
     feedback_training_samples: int = Field(default=0, alias="feedbackTrainingSamples")
     recommendations: list[Recommendation]
-    options_used: dict[str, Any]
+    options_used: dict[str, Any] = Field(alias="optionsUsed")
+
+    model_config = {"populate_by_name": True}

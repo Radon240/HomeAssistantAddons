@@ -68,9 +68,7 @@ class FeedbackLearner:
             self._touch(entity_counter, entity_id).update(1)
 
         if verdict == VERDICT_NOT_USEFUL:
-            self._dismissed_until[context.pattern_key] = datetime.now(timezone.utc) + timedelta(
-                days=self._dismiss_days
-            )
+            self._register_dismissal(context)
 
         self._save()
         logger.info(
@@ -81,7 +79,7 @@ class FeedbackLearner:
         )
 
     def rank_adjustment(self, context: FeedbackContext) -> RankingAdjustment:
-        if self._is_dismissed(context.pattern_key):
+        if self._is_dismissed(context):
             return RankingAdjustment(
                 hidden=True,
                 reward_score=0.0,
@@ -147,14 +145,40 @@ class FeedbackLearner:
             return 0.0
         return sum(penalties) / len(penalties)
 
-    def _is_dismissed(self, pattern_key: str) -> bool:
-        until = self._dismissed_until.get(pattern_key)
-        if until is None:
-            return False
-        if until <= datetime.now(timezone.utc):
-            del self._dismissed_until[pattern_key]
-            return False
-        return True
+    def _dismissal_keys(self, context: FeedbackContext) -> tuple[str, ...]:
+        keys: list[str] = []
+        if context.pattern_key.strip():
+            keys.append(context.pattern_key)
+        if context.recommendation_id.strip():
+            keys.append(context.recommendation_id)
+        if context.entity_ids:
+            keys.append(self._entity_signature(context.entity_ids))
+        return tuple(keys)
+
+    @staticmethod
+    def _entity_signature(entity_ids: tuple[str, ...]) -> str:
+        return "entities:" + "|".join(sorted(entity_ids))
+
+    def _register_dismissal(self, context: FeedbackContext) -> None:
+        until = datetime.now(timezone.utc) + timedelta(days=self._dismiss_days)
+        for key in self._dismissal_keys(context):
+            self._dismissed_until[key] = until
+        logger.info(
+            "Dismissed recommendation keys until %s: %s",
+            until.isoformat(),
+            list(self._dismissal_keys(context)),
+        )
+
+    def _is_dismissed(self, context: FeedbackContext) -> bool:
+        for key in self._dismissal_keys(context):
+            until = self._dismissed_until.get(key)
+            if until is None:
+                continue
+            if until <= datetime.now(timezone.utc):
+                del self._dismissed_until[key]
+                continue
+            return True
+        return False
 
     @staticmethod
     def _features(context: FeedbackContext) -> dict[str, float | int]:
