@@ -27,33 +27,134 @@ function buildFeedbackPayload(item: Recommendation) {
   };
 }
 
+function ConfidenceBarFill({ percent }: { percent: number }) {
+  return <div className="confidence-bar" style={{ width: `${percent}%` }} />;
+}
+
+function ConfidenceBarWrap({ percent }: { percent: number }) {
+  return (
+    <div className="confidence-bar-wrap" aria-label={`Уверенность ${percent}%`}>
+      <ConfidenceBarFill percent={percent} />
+    </div>
+  );
+}
+
+function ExplanationFactorContent({
+  factor,
+  percent
+}: {
+  factor: ExplanationFactor;
+  percent: number;
+}) {
+  return (
+    <div className="explanation-factor">
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
+        <span>
+          <strong>{factor.label}:</strong> {factor.value}
+        </span>
+        <span className="muted">{percent}%</span>
+      </div>
+      <div className="confidence-bar-wrap" style={{ height: 6, marginTop: 4 }}>
+        <ConfidenceBarFill percent={percent} />
+      </div>
+    </div>
+  );
+}
+
 function ExplanationFactorRow({ factor }: { factor: ExplanationFactor }) {
   const percent = Math.round(factor.score * 100);
   return (
     <li>
-      <div className="explanation-factor">
-        <motionFactorText factor={factor} percent={percent} />
-        <div className="confidence-bar-wrap" style={{ height: 6, marginTop: 4 }}>
-          <div className="confidence-bar" style={{ width: `${percent}%` }} />
-        </div>
-      </div>
+      <ExplanationFactorContent factor={factor} percent={percent} />
     </li>
   );
 }
 
-function motionFactorText({ factor, percent }: { factor: ExplanationFactor; percent: number }) {
+function CadenceRow({
+  item,
+  cadencePercent,
+  lift
+}: {
+  item: Recommendation;
+  cadencePercent: number;
+  lift: number;
+}) {
   return (
-    <motionFactorTextInner factor={factor} percent={percent} />
+    <div className="cadence-row">
+      <span className="cadence-badge">{item.cadenceLabel}</span>
+      {item.cadence !== "irregular" ? (
+        <span className="muted" style={{ fontSize: 12 }}>
+          {item.scheduleHint} · расписание {cadencePercent}%
+        </span>
+      ) : item.weekdayHint ? (
+        <span className="muted" style={{ fontSize: 12 }}>
+          {item.weekdayHint}
+        </span>
+      ) : (
+        <span className="muted" style={{ fontSize: 12 }}>
+          {item.scheduleHint || "Без устойчивого расписания"}
+        </span>
+      )}
+      {lift >= 1.2 ? (
+        <span className="muted" style={{ fontSize: 12 }}>
+          · lift {lift.toFixed(1)}×
+        </span>
+      ) : null}
+    </div>
   );
 }
 
-function motionFactorTextInner({ factor, percent }: { factor: ExplanationFactor; percent: number }) {
+function RecommendationFeedback({
+  verdict,
+  submitting,
+  onUseful,
+  onDismiss
+}: {
+  verdict: FeedbackVerdict | null;
+  submitting: boolean;
+  onUseful: () => void;
+  onDismiss: () => void;
+}) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
-      <span>
-        <strong>{factor.label}:</strong> {factor.value}
-      </span>
-      <span className="muted">{percent}%</span>
+    <div className="feedback-row">
+      {verdict ? (
+        <span className="feedback-thanks muted">
+          {verdict === "useful"
+            ? "Спасибо — похожие сценарии будут ранжироваться выше."
+            : "Скрыто на несколько дней; похожие паттерны понизятся."}
+        </span>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="feedback-btn feedback-btn-useful"
+            disabled={submitting}
+            onClick={onUseful}
+          >
+            Полезно
+          </button>
+          <button
+            type="button"
+            className="feedback-btn feedback-btn-dismiss"
+            disabled={submitting}
+            onClick={onDismiss}
+          >
+            Не то
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatsLine({ item }: { item: Recommendation }) {
+  return (
+    <div className="mono" style={{ fontSize: 12, marginTop: 10 }}>
+      Поддержка: {item.supportCount} · Сессий: {item.sessionCount} · Частота:{" "}
+      {Math.round(item.frequencyScore * 100)}%
+      {item.medianStepGapsSeconds?.length
+        ? ` · паузы: ${item.medianStepGapsSeconds.map((g) => `${Math.round(g)}с`).join(", ")}`
+        : ""}
     </div>
   );
 }
@@ -97,27 +198,7 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
         <h3 style={{ margin: 0, fontSize: "1.05rem" }}>{item.title}</h3>
         <span className="confidence-badge">{confidencePercent}%</span>
       </div>
-      <div className="cadence-row">
-        <span className="cadence-badge">{item.cadenceLabel}</span>
-        {item.cadence !== "irregular" ? (
-          <span className="muted" style={{ fontSize: 12 }}>
-            {item.scheduleHint} · расписание {cadencePercent}%
-          </span>
-        ) : item.weekdayHint ? (
-          <span className="muted" style={{ fontSize: 12 }}>
-            {item.weekdayHint}
-          </span>
-        ) : (
-          <span className="muted" style={{ fontSize: 12 }}>
-            {item.scheduleHint || "Без устойчивого расписания"}
-          </span>
-        )}
-        {lift >= 1.2 ? (
-          <span className="muted" style={{ fontSize: 12 }}>
-            · lift {lift.toFixed(1)}×
-          </span>
-        ) : null}
-      </div>
+      <CadenceRow item={item} cadencePercent={cadencePercent} lift={lift} />
       {item.whyGenerated ? (
         <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>
           <strong style={{ fontWeight: 600 }}>Почему предложено:</strong> {item.whyGenerated}
@@ -126,9 +207,7 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
       <p className="muted" style={{ margin: "8px 0" }}>
         {item.description}
       </p>
-      <div className="confidence-bar-wrap" aria-label={`Уверенность ${confidencePercent}%`}>
-        <motionConfidenceBar percent={confidencePercent} />
-      </div>
+      <ConfidenceBarWrap percent={confidencePercent} />
       {learned ? (
         <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
           Ранг скорректирован обучением на отзывах (×{feedbackScore.toFixed(2)})
@@ -144,13 +223,7 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
           </ul>
         </details>
       ) : null}
-      <div className="mono" style={{ fontSize: 12, marginTop: 10 }}>
-        Поддержка: {item.supportCount} · Сессий: {item.sessionCount} · Частота:{" "}
-        {Math.round(item.frequencyScore * 100)}%
-        {item.medianStepGapsSeconds?.length
-          ? ` · паузы: ${item.medianStepGapsSeconds.map((g) => `${Math.round(g)}с`).join(", ")}`
-          : ""}
-      </div>
+      <StatsLine item={item} />
       <ol className="sequence-steps">
         {item.sequence.map((step, index) => (
           <li key={`${item.id}-${index}`}>
@@ -165,34 +238,12 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
           {JSON.stringify(item.suggestedAutomation, null, 2)}
         </pre>
       </details>
-      <div className="feedback-row">
-        {verdict ? (
-          <span className="feedback-thanks muted">
-            {verdict === "useful"
-              ? "Спасибо — похожие сценарии будут ранжироваться выше."
-              : "Скрыто на несколько дней; похожие паттерны понизятся."}
-          </span>
-        ) : (
-          <>
-            <button
-              type="button"
-              className="feedback-btn feedback-btn-useful"
-              disabled={submitting}
-              onClick={() => void sendFeedback("useful")}
-            >
-              Полезно
-            </button>
-            <button
-              type="button"
-              className="feedback-btn feedback-btn-dismiss"
-              disabled={submitting}
-              onClick={() => void sendFeedback("not_useful")}
-            >
-              Не то
-            </button>
-          </>
-        )}
-      </div>
+      <RecommendationFeedback
+        verdict={verdict}
+        submitting={submitting}
+        onUseful={() => void sendFeedback("useful")}
+        onDismiss={() => void sendFeedback("not_useful")}
+      />
       {error ? (
         <p className="bad" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
           {error}
@@ -200,8 +251,4 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
       ) : null}
     </article>
   );
-}
-
-function motionConfidenceBar({ percent }: { percent: number }) {
-  return <div className="confidence-bar" style={{ width: `${percent}%` }} />;
 }
