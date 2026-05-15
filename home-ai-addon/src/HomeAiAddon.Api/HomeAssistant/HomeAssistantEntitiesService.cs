@@ -14,7 +14,7 @@ public sealed class HomeAssistantEntitiesService(
             return [];
         }
 
-        var statesUri = new Uri(endpoints.RestApiBase, "states");
+        var statesUri = HomeAssistantUriHelper.CombineRestPath(endpoints.RestApiBase, "states");
         var client = httpClientFactory.CreateClient("HomeAssistant");
 
         using var response = await client.GetAsync(statesUri, cancellationToken).ConfigureAwait(false);

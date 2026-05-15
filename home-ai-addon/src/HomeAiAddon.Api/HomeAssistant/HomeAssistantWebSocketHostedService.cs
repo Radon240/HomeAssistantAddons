@@ -197,7 +197,9 @@ public sealed class HomeAssistantWebSocketHostedService(
             IHttpClientFactory httpClientFactory,
             CancellationToken cancellationToken)
         {
-            var pingUri = new Uri(_endpoints.RestApiBase, _endpoints.RestHealthCheckRelativePath);
+            var pingUri = HomeAssistantUriHelper.CombineRestPath(
+                _endpoints.RestApiBase,
+                _endpoints.RestHealthCheckRelativePath);
             var client = httpClientFactory.CreateClient("HomeAssistant");
             using var response = await client.GetAsync(pingUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
                 .ConfigureAwait(false);

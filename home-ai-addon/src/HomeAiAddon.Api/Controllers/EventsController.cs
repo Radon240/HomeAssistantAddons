@@ -13,8 +13,15 @@ public sealed class EventsController(IStateChangeEventStore store) : ControllerB
         [FromQuery] string? entity = null,
         CancellationToken cancellationToken = default)
     {
-        var items = await store.QueryAsync(limit, entity, cancellationToken);
-        return Ok(new EventsListResponse(items.Count, items));
+        try
+        {
+            var items = await store.QueryAsync(limit, entity, cancellationToken);
+            return Ok(new EventsListResponse(items.Count, items));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
     }
 
     [HttpGet("stats/hourly")]
@@ -22,8 +29,15 @@ public sealed class EventsController(IStateChangeEventStore store) : ControllerB
         [FromQuery] int hours = 1,
         CancellationToken cancellationToken = default)
     {
-        var buckets = await store.GetHourlyStatsAsync(hours, cancellationToken);
-        return Ok(new HourlyStatsResponse(hours, buckets));
+        try
+        {
+            var buckets = await store.GetHourlyStatsAsync(hours, cancellationToken);
+            return Ok(new HourlyStatsResponse(hours, buckets));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
     }
 }
 

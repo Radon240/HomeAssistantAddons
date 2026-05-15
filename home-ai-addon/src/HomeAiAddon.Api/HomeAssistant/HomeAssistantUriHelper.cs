@@ -48,4 +48,19 @@ public static class HomeAssistantUriHelper
 
         return builder.Uri;
     }
+
+    /// <summary>
+    /// Склеивает базовый URL API и относительный путь (Uri.Combine заменяет последний сегмент — из-за этого ломался /api).
+    /// </summary>
+    public static Uri CombineRestPath(Uri restApiBase, string relativePath)
+    {
+        var baseString = restApiBase.ToString().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return new Uri(baseString + "/", UriKind.Absolute);
+        }
+
+        var rel = relativePath.TrimStart('/');
+        return new Uri($"{baseString}/{rel}", UriKind.Absolute);
+    }
 }

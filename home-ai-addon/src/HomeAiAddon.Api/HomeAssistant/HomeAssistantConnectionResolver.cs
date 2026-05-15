@@ -12,7 +12,7 @@ public sealed class HomeAssistantConnectionResolver(
     IHomeAssistantAccessTokenProvider tokenProvider,
     ILogger<HomeAssistantConnectionResolver> logger)
 {
-    public static readonly Uri SupervisorRestApiBase = new("http://supervisor/core/api");
+    public static readonly Uri SupervisorRestApiBase = new("http://supervisor/core/api/");
     public static readonly Uri SupervisorWebSocketUri = new("ws://supervisor/core/websocket");
 
     public bool TryResolve(out HomeAssistantEndpoints endpoints)
