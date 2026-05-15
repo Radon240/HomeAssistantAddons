@@ -62,6 +62,33 @@ public sealed class BehaviorAnalysisClient(
         throw new HttpRequestException($"ML analyze failed: {detail}", lastError);
     }
 
+    public async Task<FeedbackResponsePayload> SubmitFeedbackAsync(
+        FeedbackRequestPayload request,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            "/api/v1/feedback",
+            request,
+            JsonOptions,
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            logger.LogWarning(
+                "ML feedback failed: {StatusCode} {Body}",
+                (int)response.StatusCode,
+                body);
+            response.EnsureSuccessStatusCode();
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<FeedbackResponsePayload>(
+            JsonOptions,
+            cancellationToken);
+
+        return payload ?? throw new InvalidOperationException("ML service returned empty feedback response.");
+    }
+
     public async Task<bool> IsHealthyAsync(CancellationToken cancellationToken = default)
     {
         try

@@ -16,10 +16,13 @@ export interface SuggestedAutomation {
 
 export interface Recommendation {
   id: string;
+  patternKey: string;
   sequence: SequenceStep[];
   supportCount: number;
   sessionCount: number;
   confidence: number;
+  baseConfidence: number;
+  feedbackScore: number;
   frequencyScore: number;
   cadence: string;
   cadenceConfidence: number;
@@ -34,6 +37,7 @@ export interface RecommendationsResponse {
   analyzedEventCount: number;
   sessionCount: number;
   patternCandidates: number;
+  feedbackTrainingSamples: number;
   scannedEventCount: number;
   excludedEventCount: number;
   recommendations: Recommendation[];
@@ -57,8 +61,37 @@ export interface UpdateAnalysisExclusionsRequest {
   excludeDomains: string[];
 }
 
+export type FeedbackVerdict = "useful" | "not_useful";
+
+export interface RecommendationFeedbackRequest {
+  verdict: FeedbackVerdict;
+  patternKey: string;
+  cadence: string;
+  supportCount: number;
+  confidence: number;
+  frequencyScore: number;
+  entityIds: string[];
+}
+
+export interface FeedbackResponse {
+  accepted: boolean;
+  trainingSamples: number;
+  message: string;
+}
+
 export function fetchRecommendations(): Promise<RecommendationsResponse> {
   return fetchJson<RecommendationsResponse>("/api/recommendations");
+}
+
+export function submitRecommendationFeedback(
+  recommendationId: string,
+  body: RecommendationFeedbackRequest
+): Promise<FeedbackResponse> {
+  return fetchJson<FeedbackResponse>(`/api/recommendations/${recommendationId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
 }
 
 export function fetchAnalysisExclusions(): Promise<AnalysisExclusionsResponse> {

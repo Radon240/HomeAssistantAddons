@@ -211,6 +211,43 @@ button:disabled {
   overflow: hidden;
 }
 
+.feedback-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.feedback-btn {
+  font-size: 0.85rem;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.feedback-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feedback-btn-useful {
+  color: #b7ffcf;
+  background: rgba(183, 255, 207, 0.1);
+  border-color: rgba(183, 255, 207, 0.35);
+}
+
+.feedback-btn-dismiss {
+  color: #ffb4b4;
+  background: rgba(255, 180, 180, 0.08);
+  border-color: rgba(255, 180, 180, 0.3);
+}
+
+.feedback-thanks {
+  font-size: 0.85rem;
+}
+
 .confidence-bar {
   height: 100%;
   border-radius: 999px;

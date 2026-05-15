@@ -1,12 +1,49 @@
-import type { Recommendation } from "../api/recommendations";
+import { useState } from "react";
+import {
+  submitRecommendationFeedback,
+  type FeedbackVerdict,
+  type Recommendation
+} from "../api/recommendations";
 
 interface RecommendationCardProps {
   item: Recommendation;
+  onFeedback?: (id: string, verdict: FeedbackVerdict) => void;
 }
 
-export function RecommendationCard({ item }: RecommendationCardProps) {
+export function RecommendationCard({ item, onFeedback }: RecommendationCardProps) {
+  const [submitting, setSubmitting] = useState(false);
+  const [verdict, setVerdict] = useState<FeedbackVerdict | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const confidencePercent = Math.round(item.confidence * 100);
   const cadencePercent = Math.round(item.cadenceConfidence * 100);
+  const learned = Math.abs(item.feedbackScore - 1) > 0.02;
+
+  async function sendFeedback(next: FeedbackVerdict) {
+    if (submitting || verdict) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitRecommendationFeedback(item.id, {
+        verdict: next,
+        patternKey: item.patternKey,
+        cadence: item.cadence,
+        supportCount: item.supportCount,
+        confidence: item.baseConfidence,
+        frequencyScore: item.frequencyScore,
+        entityIds: item.sequence.map((step) => step.entityId)
+      });
+      setVerdict(next);
+      onFeedback?.(item.id, next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <article className="event-item recommendation-card">
@@ -30,11 +67,13 @@ export function RecommendationCard({ item }: RecommendationCardProps) {
         {item.description}
       </p>
       <div className="confidence-bar-wrap" aria-label={`Уверенность ${confidencePercent}%`}>
-        <div
-          className="confidence-bar"
-          style={{ width: `${confidencePercent}%` }}
-        />
+        <div className="confidence-bar" style={{ width: `${confidencePercent}%` }} />
       </div>
+      {learned ? (
+        <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
+          Ранг скорректирован обучением на отзывах (×{item.feedbackScore.toFixed(2)})
+        </p>
+      ) : null}
       <div className="mono" style={{ fontSize: 12, marginTop: 10 }}>
         Поддержка: {item.supportCount} · Сессий: {item.sessionCount} · Частота:{" "}
         {Math.round(item.frequencyScore * 100)}%
@@ -53,6 +92,39 @@ export function RecommendationCard({ item }: RecommendationCardProps) {
           {JSON.stringify(item.suggestedAutomation, null, 2)}
         </pre>
       </details>
+      <div className="feedback-row">
+        {verdict ? (
+          <span className="feedback-thanks muted">
+            {verdict === "useful"
+              ? "Спасибо — похожие сценарии будут ранжироваться выше."
+              : "Скрыто на несколько дней; похожие паттерны понизятся."}
+          </span>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="feedback-btn feedback-btn-useful"
+              disabled={submitting}
+              onClick={() => void sendFeedback("useful")}
+            >
+              Полезно
+            </button>
+            <button
+              type="button"
+              className="feedback-btn feedback-btn-dismiss"
+              disabled={submitting}
+              onClick={() => void sendFeedback("not_useful")}
+            >
+              Не то
+            </button>
+          </>
+        )}
+      </div>
+      {error ? (
+        <p className="bad" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+          {error}
+        </p>
+      ) : null}
     </article>
   );
 }

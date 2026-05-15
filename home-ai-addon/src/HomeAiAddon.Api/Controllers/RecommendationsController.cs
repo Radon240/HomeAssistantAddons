@@ -56,6 +56,7 @@ public sealed class RecommendationsController(
                     0,
                     0,
                     0,
+                    0,
                     batch.ScannedCount,
                     batch.ExcludedCount,
                     Array.Empty<RecommendationPayload>(),
@@ -86,13 +87,15 @@ public sealed class RecommendationsController(
                     opts.RequirePeriodic,
                     opts.MaxGapSeconds,
                     opts.MaxSequenceLength,
-                    opts.LookbackHours));
+                    opts.LookbackHours,
+                    opts.FeedbackDismissDays));
 
             var result = await analysisClient.AnalyzeAsync(request, cancellationToken);
             return Ok(new RecommendationsResponse(
                 result.AnalyzedEventCount,
                 result.SessionCount,
                 result.PatternCandidates,
+                result.FeedbackTrainingSamples,
                 batch.ScannedCount,
                 batch.ExcludedCount,
                 result.Recommendations,
@@ -120,7 +123,70 @@ public sealed class RecommendationsController(
             return StatusCode(500, new { error = ex.Message });
         }
     }
+
+    [HttpPost("{id}/feedback")]
+    public async Task<ActionResult<FeedbackResponsePayload>> SubmitFeedback(
+        string id,
+        [FromBody] RecommendationFeedbackRequest body,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(body.PatternKey))
+        {
+            return BadRequest(new { error = "patternKey is required" });
+        }
+
+        var verdict = body.Verdict?.Trim().ToLowerInvariant();
+        if (verdict is not ("useful" or "not_useful"))
+        {
+            return BadRequest(new { error = "verdict must be 'useful' or 'not_useful'" });
+        }
+
+        try
+        {
+            if (!await analysisClient.IsHealthyAsync(cancellationToken))
+            {
+                return StatusCode(503, new { error = "ML service unavailable" });
+            }
+
+            var entityIds = body.EntityIds?.Count > 0
+                ? body.EntityIds
+                : Array.Empty<string>();
+
+            var result = await analysisClient.SubmitFeedbackAsync(
+                new FeedbackRequestPayload(
+                    id,
+                    body.PatternKey,
+                    verdict,
+                    body.Cadence ?? "irregular",
+                    body.SupportCount,
+                    body.Confidence,
+                    body.FrequencyScore,
+                    entityIds),
+                cancellationToken);
+
+            return Ok(result);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "ML feedback request failed");
+            return StatusCode(503, new { error = "ML service unavailable", detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Feedback failed for {RecommendationId}", id);
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
 }
+
+public sealed record RecommendationFeedbackRequest(
+    string Verdict,
+    string PatternKey,
+    string? Cadence,
+    int SupportCount,
+    double Confidence,
+    double FrequencyScore,
+    IReadOnlyList<string>? EntityIds);
 
 public sealed record RecommendationsStatusResponse(
     bool MlHealthy,
@@ -131,6 +197,7 @@ public sealed record RecommendationsResponse(
     int AnalyzedEventCount,
     int SessionCount,
     int PatternCandidates,
+    int FeedbackTrainingSamples,
     int ScannedEventCount,
     int ExcludedEventCount,
     IReadOnlyList<RecommendationPayload> Recommendations,

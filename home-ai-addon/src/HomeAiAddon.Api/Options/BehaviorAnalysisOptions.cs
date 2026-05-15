@@ -32,4 +32,7 @@ public sealed class BehaviorAnalysisOptions
     public int MaxSequenceLength { get; set; } = 4;
 
     public int LookbackHours { get; set; } = 336;
+
+    /// <summary>Hide patterns marked «not useful» for this many days.</summary>
+    public int FeedbackDismissDays { get; set; } = 14;
 }

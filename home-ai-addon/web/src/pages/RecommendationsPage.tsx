@@ -48,6 +48,9 @@ export function RecommendationsPage() {
             В модель: {data.analyzedEventCount} событий (просмотрено {data.scannedEventCount},
             исключено {data.excludedEventCount}) · Сессий: {data.sessionCount} · Кандидатов:{" "}
             {data.patternCandidates}
+            {data.feedbackTrainingSamples > 0
+              ? ` · Обучение на отзывах: ${data.feedbackTrainingSamples} прим.`
+              : ""}
           </p>
         ) : null}
       </section>
@@ -86,7 +89,22 @@ export function RecommendationsPage() {
       ) : null}
 
       {data?.recommendations.map((item) => (
-        <RecommendationCard key={item.id} item={item} />
+        <RecommendationCard
+          key={item.id}
+          item={item}
+          onFeedback={(id, verdict) => {
+            if (verdict === "not_useful") {
+              setData((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      recommendations: prev.recommendations.filter((r) => r.id !== id)
+                    }
+                  : prev
+              );
+            }
+          }}
+        />
       ))}
     </div>
   );

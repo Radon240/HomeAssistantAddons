@@ -7,4 +7,8 @@ public interface IBehaviorAnalysisClient
         CancellationToken cancellationToken = default);
 
     Task<bool> IsHealthyAsync(CancellationToken cancellationToken = default);
+
+    Task<FeedbackResponsePayload> SubmitFeedbackAsync(
+        FeedbackRequestPayload request,
+        CancellationToken cancellationToken = default);
 }

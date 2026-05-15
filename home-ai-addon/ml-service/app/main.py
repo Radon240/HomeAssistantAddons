@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
-from app.models import AnalyzeOptions, AnalyzeRequest, AnalyzeResponse
+from app.feedback_service import apply_feedback_to_learner, get_feedback_learner
+from app.models import AnalyzeOptions, AnalyzeRequest, AnalyzeResponse, FeedbackRequest, FeedbackResponse
 from app.recommender import analyze_events
 
 logging.basicConfig(
@@ -36,6 +37,28 @@ app = FastAPI(
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "Healthy", "service": "behavior-analysis"}
+
+
+@app.post("/api/v1/feedback", response_model=FeedbackResponse)
+async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
+    try:
+        learner = await asyncio.to_thread(apply_feedback_to_learner, request)
+        return FeedbackResponse(
+            accepted=True,
+            training_samples=learner.training_samples,
+            message="Feedback recorded",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Feedback failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/feedback/stats")
+def feedback_stats() -> dict[str, int]:
+    learner = get_feedback_learner()
+    return {"trainingSamples": learner.training_samples}
 
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)

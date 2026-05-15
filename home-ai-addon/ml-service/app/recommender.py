@@ -13,6 +13,8 @@ from app.models import (
 from app.pattern_miner import PatternCandidate, mine_patterns
 from app.river_tracker import OnlinePatternTracker
 from app.sequence_builder import build_sessions
+from app.feedback_learner import FeedbackContext, extract_domains
+from app.feedback_service import get_feedback_learner
 from app.temporal_analysis import (
     CADENCE_IRREGULAR,
     cadence_label_ru,
@@ -34,6 +36,9 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
         tracker=tracker,
     )
 
+    learner = get_feedback_learner()
+    learner.set_dismiss_days(options.feedback_dismiss_days)
+
     recommendations: list[Recommendation] = []
     for candidate in candidates:
         if candidate.confidence < options.min_confidence:
@@ -42,6 +47,7 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
             candidate,
             session_count=len(sessions),
             options=options,
+            learner=learner,
         )
         if recommendation is not None:
             recommendations.append(recommendation)
@@ -49,7 +55,7 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
     recommendations.sort(
         key=lambda item: (
             item.cadence != CADENCE_IRREGULAR,
-            item.cadence_confidence * 0.4 + item.confidence * 0.6,
+            item.feedback_score * (item.cadence_confidence * 0.4 + item.confidence * 0.6),
             item.support_count,
         ),
         reverse=True,
@@ -59,6 +65,7 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
         analyzed_event_count=len(events),
         session_count=len(sessions),
         pattern_candidates=len(candidates),
+        feedback_training_samples=learner.training_samples,
         recommendations=recommendations[:20],
         options_used=options.model_dump(by_alias=True),
     )
@@ -68,6 +75,7 @@ def _to_recommendation(
     candidate: PatternCandidate,
     session_count: int,
     options: AnalyzeOptions,
+    learner,
 ) -> Recommendation | None:
     if len(candidate.tokens) < 2:
         return None
@@ -120,14 +128,38 @@ def _to_recommendation(
         4,
     )
 
-    pattern_id = hashlib.sha1("|".join(candidate.labels).encode("utf-8")).hexdigest()[:12]
+    pattern_key = "|".join(candidate.labels)
+    pattern_id = hashlib.sha1(pattern_key.encode("utf-8")).hexdigest()[:12]
+    entity_ids = [token.entity_id for token in candidate.tokens]
+
+    feedback_context = FeedbackContext(
+        pattern_key=pattern_key,
+        recommendation_id=f"rec-{pattern_id}",
+        cadence=cadence_result.cadence,
+        support_count=candidate.support_count,
+        confidence=combined_confidence,
+        frequency_score=candidate.frequency_score,
+        entity_ids=tuple(entity_ids),
+        domains=extract_domains(entity_ids),
+    )
+    adjustment = learner.rank_adjustment(feedback_context)
+    if adjustment.hidden:
+        return None
+
+    adjusted_confidence = round(
+        min(0.99, combined_confidence * adjustment.final_multiplier),
+        4,
+    )
 
     return Recommendation(
         id=f"rec-{pattern_id}",
+        pattern_key=pattern_key,
         sequence=steps,
         support_count=candidate.support_count,
         session_count=session_count,
-        confidence=combined_confidence,
+        confidence=adjusted_confidence,
+        base_confidence=combined_confidence,
+        feedback_score=round(adjustment.final_multiplier, 4),
         frequency_score=candidate.frequency_score,
         cadence=cadence_result.cadence,
         cadence_confidence=cadence_result.confidence,

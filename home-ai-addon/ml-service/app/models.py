@@ -19,6 +19,7 @@ class EventInput(BaseModel):
 
 
 class AnalyzeOptions(BaseModel):
+    feedback_dismiss_days: int = Field(default=14, ge=1, le=90, alias="feedbackDismissDays")
     min_support: int = Field(default=3, ge=2, le=100, alias="minSupport")
     min_confidence: float = Field(default=0.55, ge=0.0, le=1.0, alias="minConfidence")
     min_cadence_confidence: float = Field(
@@ -51,12 +52,36 @@ class SuggestedAutomation(BaseModel):
     action_to_states: list[str | None]
 
 
+class FeedbackRequest(BaseModel):
+    recommendation_id: str = Field(alias="recommendationId")
+    pattern_key: str = Field(alias="patternKey")
+    verdict: str
+    cadence: str = "irregular"
+    support_count: int = Field(default=0, alias="supportCount")
+    confidence: float = 0.0
+    frequency_score: float = Field(default=0.0, alias="frequencyScore")
+    entity_ids: list[str] = Field(default_factory=list, alias="entityIds")
+
+    model_config = {"populate_by_name": True}
+
+
+class FeedbackResponse(BaseModel):
+    accepted: bool
+    training_samples: int = Field(alias="trainingSamples")
+    message: str
+
+    model_config = {"populate_by_name": True}
+
+
 class Recommendation(BaseModel):
     id: str
+    pattern_key: str = Field(alias="patternKey")
     sequence: list[SequenceStep]
     support_count: int
     session_count: int
     confidence: float
+    base_confidence: float = Field(alias="baseConfidence")
+    feedback_score: float = Field(default=1.0, alias="feedbackScore")
     frequency_score: float
     cadence: str
     cadence_confidence: float = Field(alias="cadenceConfidence")
@@ -73,5 +98,6 @@ class AnalyzeResponse(BaseModel):
     analyzed_event_count: int
     session_count: int
     pattern_candidates: int
+    feedback_training_samples: int = Field(default=0, alias="feedbackTrainingSamples")
     recommendations: list[Recommendation]
     options_used: dict[str, Any]

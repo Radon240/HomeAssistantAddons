@@ -20,21 +20,26 @@ public sealed record AnalyzeOptionsPayload(
     bool RequirePeriodic,
     int MaxGapSeconds,
     int MaxSequenceLength,
-    int LookbackHours);
+    int LookbackHours,
+    int FeedbackDismissDays = 14);
 
 public sealed record AnalyzeResponsePayload(
     int AnalyzedEventCount,
     int SessionCount,
     int PatternCandidates,
+    int FeedbackTrainingSamples,
     IReadOnlyList<RecommendationPayload> Recommendations,
     IReadOnlyDictionary<string, object>? OptionsUsed);
 
 public sealed record RecommendationPayload(
     string Id,
+    string PatternKey,
     IReadOnlyList<SequenceStepPayload> Sequence,
     int SupportCount,
     int SessionCount,
     double Confidence,
+    double BaseConfidence,
+    double FeedbackScore,
     double FrequencyScore,
     string Cadence,
     double CadenceConfidence,
@@ -43,6 +48,21 @@ public sealed record RecommendationPayload(
     string Title,
     string Description,
     SuggestedAutomationPayload SuggestedAutomation);
+
+public sealed record FeedbackRequestPayload(
+    string RecommendationId,
+    string PatternKey,
+    string Verdict,
+    string Cadence,
+    int SupportCount,
+    double Confidence,
+    double FrequencyScore,
+    IReadOnlyList<string> EntityIds);
+
+public sealed record FeedbackResponsePayload(
+    bool Accepted,
+    int TrainingSamples,
+    string Message);
 
 public sealed record SequenceStepPayload(
     string Label,
