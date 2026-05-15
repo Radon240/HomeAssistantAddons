@@ -16,7 +16,7 @@ public sealed class BehaviorAnalysisClient(
         AnalyzeRequestPayload request,
         CancellationToken cancellationToken = default)
     {
-        const int maxAttempts = 5;
+        const int maxAttempts = 3;
         Exception? lastError = null;
 
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
@@ -45,21 +45,22 @@ public sealed class BehaviorAnalysisClient(
 
                 return payload ?? throw new InvalidOperationException("ML service returned empty analyze response.");
             }
-            catch (HttpRequestException ex) when (attempt < maxAttempts && IsTransientConnectionError(ex))
+            catch (Exception ex) when (attempt < maxAttempts && IsRetryable(ex))
             {
                 lastError = ex;
-                logger.LogDebug(ex, "ML service not ready, retry {Attempt}/{MaxAttempts}", attempt, maxAttempts);
-                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                logger.LogWarning(
+                    ex,
+                    "ML analyze attempt {Attempt}/{MaxAttempts} failed, retrying",
+                    attempt,
+                    maxAttempts);
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
             }
         }
 
-        throw lastError ?? new HttpRequestException("ML service unavailable");
+        var detail = FormatError(lastError);
+        logger.LogError("ML analyze failed after retries: {Detail}", detail);
+        throw new HttpRequestException($"ML analyze failed: {detail}", lastError);
     }
-
-    private static bool IsTransientConnectionError(HttpRequestException ex) =>
-        ex.InnerException is System.Net.Sockets.SocketException
-        || ex.Message.Contains("Connection refused", StringComparison.OrdinalIgnoreCase)
-        || ex.Message.Contains("actively refused", StringComparison.OrdinalIgnoreCase);
 
     public async Task<bool> IsHealthyAsync(CancellationToken cancellationToken = default)
     {
@@ -83,5 +84,28 @@ public sealed class BehaviorAnalysisClient(
             logger.LogDebug(ex, "ML service health check failed");
             return false;
         }
+    }
+
+    private static bool IsRetryable(Exception ex) =>
+        ex is TaskCanceledException
+        or HttpRequestException
+        or IOException;
+
+    private static string FormatError(Exception? ex)
+    {
+        if (ex is null)
+        {
+            return "unknown error";
+        }
+
+        var parts = new List<string> { ex.Message };
+        var inner = ex.InnerException;
+        while (inner is not null)
+        {
+            parts.Add(inner.Message);
+            inner = inner.InnerException;
+        }
+
+        return string.Join(" | ", parts.Distinct());
     }
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,8 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [ml-service] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+MAX_EVENTS_PER_REQUEST = 3000
 
 
 @asynccontextmanager
@@ -36,13 +39,22 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
-def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
+async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     if not request.events:
         raise HTTPException(status_code=400, detail="events must not be empty")
 
+    events = request.events
+    if len(events) > MAX_EVENTS_PER_REQUEST:
+        logger.info(
+            "Truncating events from %s to %s for analysis",
+            len(events),
+            MAX_EVENTS_PER_REQUEST,
+        )
+        events = events[-MAX_EVENTS_PER_REQUEST:]
+
     options = request.options or AnalyzeOptions()
     try:
-        result = analyze_events(request.events, options)
+        result = await asyncio.to_thread(analyze_events, events, options)
         logger.info(
             "Analyzed %s events, sessions=%s, recommendations=%s",
             result.analyzed_event_count,

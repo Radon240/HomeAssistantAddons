@@ -7,6 +7,9 @@ import pandas as pd
 
 from app.models import EventInput
 
+# Protects Raspberry Pi from huge HA bursts inside one time window.
+MAX_SESSION_STEPS = 48
+
 
 @dataclass(frozen=True)
 class ActionToken:
@@ -70,6 +73,10 @@ def build_sessions(
         if token.occurred_at - current[-1].occurred_at <= gap:
             if not current or current[-1].label != token.label:
                 current.append(token)
+            if len(current) >= MAX_SESSION_STEPS:
+                if len(current) >= 2:
+                    sessions.append(current)
+                current = [token]
         else:
             if len(current) >= 2:
                 sessions.append(current)
