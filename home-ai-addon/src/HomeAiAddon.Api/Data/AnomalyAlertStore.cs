@@ -80,29 +80,33 @@ public sealed class AnomalyAlertStore(ApplicationDbContext db) : IAnomalyAlertSt
         CancellationToken cancellationToken = default)
     {
         limit = Math.Clamp(limit, 1, 500);
-        var query = db.AnomalyAlerts.AsNoTracking();
 
+        // SQLite: сравнение/сортировка DateTimeOffset в LINQ не переводится — фильтруем в памяти.
+        var rows = await db.AnomalyAlerts
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        IEnumerable<AnomalyAlertRecord> filtered = rows;
         if (sinceUtc.HasValue)
         {
-            query = query.Where(a => a.DetectedAtUtc >= sinceUtc.Value);
+            filtered = filtered.Where(a => a.DetectedAtUtc >= sinceUtc.Value);
         }
 
-        var rows = await query
+        return filtered
             .OrderByDescending(a => a.DetectedAtUtc)
             .ThenByDescending(a => a.Score)
             .Take(limit)
-            .ToListAsync(cancellationToken);
-
-        return rows.Select(Map).ToList();
+            .Select(Map)
+            .ToList();
     }
 
     public async Task<int> PruneOlderThanAsync(
         DateTimeOffset cutoffUtc,
         CancellationToken cancellationToken = default)
     {
-        var stale = await db.AnomalyAlerts
-            .Where(a => a.DetectedAtUtc < cutoffUtc)
-            .ToListAsync(cancellationToken);
+        // SQLite: сравнение DateTimeOffset в Where не переводится — фильтруем в памяти.
+        var rows = await db.AnomalyAlerts.ToListAsync(cancellationToken);
+        var stale = rows.Where(a => a.DetectedAtUtc < cutoffUtc).ToList();
 
         if (stale.Count == 0)
         {
