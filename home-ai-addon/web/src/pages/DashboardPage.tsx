@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { EventsHourlyChart } from "../components/EventsHourlyChart";
 import { HomeAssistantStatusCard } from "../components/HomeAssistantStatusCard";
 
 export function DashboardPage() {
@@ -7,18 +8,19 @@ export function DashboardPage() {
       <section className="card">
         <h2 style={{ marginTop: 0 }}>Дашборд</h2>
         <p className="muted">
-          Home AI Addon — интерфейс Home Assistant Add-on. API и health обслуживаются тем же
-          Kestrel-процессом, что и статика Vite-сборки.
+          Home AI Addon — мониторинг Home Assistant, сохранение событий в SQLite и UI через Ingress.
         </p>
         <ul>
           <li>
-            <Link to="/status">Страница статуса</Link> — проверка{" "}
-            <span className="mono">/health</span>, <span className="mono">/api/info</span> и{" "}
-            <span className="mono">/api/ping</span>.
+            <Link to="/events">События</Link> — лента и фильтр по entity_id.
+          </li>
+          <li>
+            <Link to="/status">Статус</Link> — health, API, метрики.
           </li>
         </ul>
       </section>
       <HomeAssistantStatusCard />
+      <EventsHourlyChart hours={1} />
     </div>
   );
 }

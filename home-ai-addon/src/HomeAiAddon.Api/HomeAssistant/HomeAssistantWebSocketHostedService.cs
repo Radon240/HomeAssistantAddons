@@ -2,6 +2,8 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using HomeAiAddon.Api.Data;
+
 namespace HomeAiAddon.Api.HomeAssistant;
 
 /// <summary>
@@ -13,6 +15,9 @@ public sealed class HomeAssistantWebSocketHostedService(
     HomeAssistantConnectionResolver connectionResolver,
     IHomeAssistantAccessTokenProvider accessTokenProvider,
     HomeAssistantConnectionState connectionState,
+    HomeAssistantEntityFilter entityFilter,
+    RuntimeMetrics runtimeMetrics,
+    IServiceScopeFactory scopeFactory,
     IHttpClientFactory httpClientFactory) : BackgroundService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -65,6 +70,9 @@ public sealed class HomeAssistantWebSocketHostedService(
                     await using var session = await HomeAssistantWebSocketSession.ConnectAndRunAsync(
                         logger,
                         connectionState,
+                        entityFilter,
+                        runtimeMetrics,
+                        scopeFactory,
                         httpClientFactory,
                         endpoints,
                         accessToken,
@@ -82,6 +90,7 @@ public sealed class HomeAssistantWebSocketHostedService(
                     connectionState.SetWebSocketConnected(false);
                     var message = SanitizeError(ex.Message);
                     connectionState.RecordError(message);
+                    runtimeMetrics.IncrementReconnect();
                     logger.LogWarning(ex, "Home Assistant WebSocket session завершилась с ошибкой.");
 
                     var delay = ComputeBackoffDelay(_reconnectAttempt);
@@ -130,16 +139,25 @@ public sealed class HomeAssistantWebSocketHostedService(
         private readonly HomeAssistantConnectionState _connectionState;
         private readonly HomeAssistantEndpoints _endpoints;
         private readonly string _accessToken;
+        private readonly HomeAssistantEntityFilter _entityFilter;
+        private readonly RuntimeMetrics _runtimeMetrics;
+        private readonly IServiceScopeFactory _scopeFactory;
         private int _nextMessageId;
 
         private HomeAssistantWebSocketSession(
             ILogger logger,
             HomeAssistantConnectionState connectionState,
+            HomeAssistantEntityFilter entityFilter,
+            RuntimeMetrics runtimeMetrics,
+            IServiceScopeFactory scopeFactory,
             HomeAssistantEndpoints endpoints,
             string accessToken)
         {
             _logger = logger;
             _connectionState = connectionState;
+            _entityFilter = entityFilter;
+            _runtimeMetrics = runtimeMetrics;
+            _scopeFactory = scopeFactory;
             _endpoints = endpoints;
             _accessToken = accessToken;
         }
@@ -147,12 +165,22 @@ public sealed class HomeAssistantWebSocketHostedService(
         public static async Task<HomeAssistantWebSocketSession> ConnectAndRunAsync(
             ILogger logger,
             HomeAssistantConnectionState connectionState,
+            HomeAssistantEntityFilter entityFilter,
+            RuntimeMetrics runtimeMetrics,
+            IServiceScopeFactory scopeFactory,
             IHttpClientFactory httpClientFactory,
             HomeAssistantEndpoints endpoints,
             string accessToken,
             CancellationToken cancellationToken)
         {
-            var session = new HomeAssistantWebSocketSession(logger, connectionState, endpoints, accessToken);
+            var session = new HomeAssistantWebSocketSession(
+                logger,
+                connectionState,
+                entityFilter,
+                runtimeMetrics,
+                scopeFactory,
+                endpoints,
+                accessToken);
 
             await session.PingRestApiAsync(httpClientFactory, cancellationToken).ConfigureAwait(false);
 
@@ -356,12 +384,34 @@ public sealed class HomeAssistantWebSocketHostedService(
                 return;
             }
 
+            if (!_entityFilter.ShouldTrack(normalized.EntityId))
+            {
+                _runtimeMetrics.IncrementFiltered();
+                return;
+            }
+
             _connectionState.AppendStateChange(normalized);
+            _ = PersistEventAsync(normalized);
             _logger.LogDebug(
                 "HA state_changed: {EntityId} -> {NewState} (было {OldState})",
                 normalized.EntityId,
                 normalized.NewState,
                 normalized.OldState);
+        }
+
+        private async Task PersistEventAsync(NormalizedStateChangedEvent normalized)
+        {
+            try
+            {
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                var store = scope.ServiceProvider.GetRequiredService<IStateChangeEventStore>();
+                await store.AddAsync(normalized).ConfigureAwait(false);
+                _runtimeMetrics.IncrementPersisted();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Не удалось сохранить событие {EntityId} в SQLite.", normalized.EntityId);
+            }
         }
 
         private static bool TryReadResultSuccess(JsonElement root, out bool success, out string? error)

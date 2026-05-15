@@ -7,120 +7,161 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using Serilog;
 using System.Text.Json;
 
-var builder = WebApplication.CreateBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
 
-builder.Configuration.AddJsonFile(
-    "/data/options.json",
-    optional: true,
-    reloadOnChange: true);
-
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
+try
 {
-    options.ForwardedHeaders =
-        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
-});
+    var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOptions<AddonOptions>()
-    .Bind(builder.Configuration)
-    .ValidateDataAnnotations()
-    .ValidateOnStart();
-
-builder.Services.AddOptions<HomeAssistantIntegrationOptions>()
-    .Bind(builder.Configuration.GetSection(HomeAssistantIntegrationOptions.SectionName))
-    .PostConfigure<IConfiguration>((opts, cfg) =>
+    builder.Host.UseSerilog((context, services, configuration) =>
     {
-        var flat = cfg["home_assistant_base_url"];
-        if (!string.IsNullOrWhiteSpace(flat))
-        {
-            opts.BaseUrl = flat;
-        }
+        var logPath = context.Configuration["Logging:FilePath"] ?? "/data/logs/home-ai-.log";
+        EnsureLogDirectoryExists(logPath);
+
+        configuration
+            .ReadFrom.Configuration(context.Configuration)
+            .ReadFrom.Services(services)
+            .Enrich.FromLogContext()
+            .WriteTo.Console()
+            .WriteTo.File(
+                logPath,
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 7,
+                shared: true);
     });
 
-builder.Services.AddSingleton<HomeAssistantConnectionState>();
-builder.Services.AddSingleton<IHomeAssistantAccessTokenProvider, HomeAssistantAccessTokenProvider>();
-builder.Services.AddSingleton<HomeAssistantConnectionResolver>();
-builder.Services.AddTransient<HomeAssistantBearerAuthHandler>();
-builder.Services.AddHttpClient("HomeAssistant")
-    .ConfigureHttpClient(client =>
+    builder.Configuration.AddJsonFile(
+        "/data/options.json",
+        optional: true,
+        reloadOnChange: true);
+
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
-        client.Timeout = TimeSpan.FromSeconds(30);
-        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
-    })
-    .AddHttpMessageHandler<HomeAssistantBearerAuthHandler>();
-
-builder.Services.AddHostedService<HomeAssistantWebSocketHostedService>();
-
-var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? "Data Source=/data/app.db";
-EnsureDatabaseDirectoryExists(connectionString);
-
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(connectionString));
-
-builder.Services.AddHealthChecks()
-    .AddCheck<DatabaseHealthCheck>("database")
-    .AddCheck<HomeAssistantIntegrationHealthCheck>("home_assistant");
-
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.ForwardedHeaders =
+            ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
     });
 
-var app = builder.Build();
+    builder.Services.AddOptions<AddonOptions>()
+        .Bind(builder.Configuration)
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
 
-app.UseForwardedHeaders();
-
-var pathBase = app.Configuration["ASPNETCORE_PATHBASE"];
-if (!string.IsNullOrWhiteSpace(pathBase))
-{
-    app.UsePathBase(pathBase);
-}
-
-app.Use(async (context, next) =>
-{
-    if (context.Request.Headers.TryGetValue("X-Ingress-Path", out var ingressPath))
-    {
-        var raw = ingressPath.ToString();
-        if (!string.IsNullOrWhiteSpace(raw))
+    builder.Services.AddOptions<HomeAssistantIntegrationOptions>()
+        .Bind(builder.Configuration.GetSection(HomeAssistantIntegrationOptions.SectionName))
+        .PostConfigure<IConfiguration>((opts, cfg) =>
         {
-            var trimmed = raw.TrimEnd('/');
-            if (trimmed.Length > 0 && trimmed.StartsWith('/'))
+            var flat = cfg["home_assistant_base_url"];
+            if (!string.IsNullOrWhiteSpace(flat))
             {
-                context.Request.PathBase = new PathString(trimmed);
-                if (context.Request.Path.StartsWithSegments(context.Request.PathBase, out var remaining))
+                opts.BaseUrl = flat;
+            }
+        });
+
+    builder.Services.AddSingleton<HomeAssistantConnectionState>();
+    builder.Services.AddSingleton<RuntimeMetrics>();
+    builder.Services.AddSingleton<HomeAssistantEntityFilter>();
+    builder.Services.AddSingleton<IHomeAssistantAccessTokenProvider, HomeAssistantAccessTokenProvider>();
+    builder.Services.AddSingleton<HomeAssistantConnectionResolver>();
+    builder.Services.AddScoped<IStateChangeEventStore, StateChangeEventStore>();
+    builder.Services.AddSingleton<HomeAssistantEntitiesService>();
+    builder.Services.AddTransient<HomeAssistantBearerAuthHandler>();
+    builder.Services.AddHttpClient("HomeAssistant")
+        .ConfigureHttpClient(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        })
+        .AddHttpMessageHandler<HomeAssistantBearerAuthHandler>();
+
+    builder.Services.AddHostedService<HomeAssistantWebSocketHostedService>();
+
+    var connectionString = builder.Configuration.GetConnectionString("Default")
+        ?? "Data Source=/data/app.db";
+    EnsureDatabaseDirectoryExists(connectionString);
+
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlite(connectionString));
+
+    builder.Services.AddHealthChecks()
+        .AddCheck<DatabaseHealthCheck>("database")
+        .AddCheck<HomeAssistantIntegrationHealthCheck>("home_assistant");
+
+    builder.Services.AddControllers()
+        .AddJsonOptions(options =>
+        {
+            options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        });
+
+    var app = builder.Build();
+
+    app.UseSerilogRequestLogging();
+
+    app.UseForwardedHeaders();
+
+    var pathBase = app.Configuration["ASPNETCORE_PATHBASE"];
+    if (!string.IsNullOrWhiteSpace(pathBase))
+    {
+        app.UsePathBase(pathBase);
+    }
+
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Headers.TryGetValue("X-Ingress-Path", out var ingressPath))
+        {
+            var raw = ingressPath.ToString();
+            if (!string.IsNullOrWhiteSpace(raw))
+            {
+                var trimmed = raw.TrimEnd('/');
+                if (trimmed.Length > 0 && trimmed.StartsWith('/'))
                 {
-                    context.Request.Path = remaining;
+                    context.Request.PathBase = new PathString(trimmed);
+                    if (context.Request.Path.StartsWithSegments(context.Request.PathBase, out var remaining))
+                    {
+                        context.Request.Path = remaining;
+                    }
                 }
             }
         }
+
+        await next();
+    });
+
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+
+    app.MapHealthChecks("/health", new HealthCheckOptions
+    {
+        ResponseWriter = WriteHealthResponseAsync
+    });
+
+    app.MapControllers();
+    app.MapFallbackToFile("index.html");
+
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await db.Database.MigrateAsync();
     }
 
-    await next();
-});
-
-app.UseDefaultFiles();
-app.UseStaticFiles();
-
-app.MapHealthChecks("/health", new HealthCheckOptions
-{
-    ResponseWriter = WriteHealthResponseAsync
-});
-
-app.MapControllers();
-app.MapFallbackToFile("index.html");
-
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    await db.Database.MigrateAsync();
+    Log.Information("Home AI Addon API started");
+    await app.RunAsync();
 }
-
-await app.RunAsync();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+    throw;
+}
+finally
+{
+    await Log.CloseAndFlushAsync();
+}
 
 static void EnsureDatabaseDirectoryExists(string sqliteConnectionString)
 {
@@ -137,6 +178,18 @@ static void EnsureDatabaseDirectoryExists(string sqliteConnectionString)
     {
         Directory.CreateDirectory(directory);
     }
+}
+
+static void EnsureLogDirectoryExists(string logPath)
+{
+    var directory = Path.GetDirectoryName(logPath.Replace('\\', '/').TrimEnd('/'));
+    if (string.IsNullOrEmpty(directory))
+    {
+        return;
+    }
+
+    var full = Path.IsPathRooted(directory) ? directory : Path.GetFullPath(directory);
+    Directory.CreateDirectory(full);
 }
 
 static async Task WriteHealthResponseAsync(HttpContext context, HealthReport report)

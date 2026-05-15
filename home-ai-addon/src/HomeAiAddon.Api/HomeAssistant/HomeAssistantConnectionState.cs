@@ -17,6 +17,28 @@ public sealed class HomeAssistantConnectionState
 
     public long StateChangeEventsReceived => Interlocked.Read(ref _stateChangeEventsReceived);
 
+    public string? LastError
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _lastError;
+            }
+        }
+    }
+
+    public DateTimeOffset? LastEventReceivedAtUtc
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _lastEventReceivedAtUtc;
+            }
+        }
+    }
+
     public void SetWebSocketConnected(bool connected)
     {
         Interlocked.Exchange(ref _webSocketConnected, connected ? 1 : 0);

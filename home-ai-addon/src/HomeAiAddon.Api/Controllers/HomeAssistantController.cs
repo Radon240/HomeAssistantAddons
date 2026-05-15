@@ -7,8 +7,16 @@ namespace HomeAiAddon.Api.Controllers;
 [Route("api/homeassistant")]
 public sealed class HomeAssistantController(
     HomeAssistantConnectionState connectionState,
-    HomeAssistantConnectionResolver connectionResolver) : ControllerBase
+    HomeAssistantConnectionResolver connectionResolver,
+    HomeAssistantEntitiesService entitiesService) : ControllerBase
 {
+    [HttpGet("entities")]
+    public async Task<ActionResult<EntitiesListResponse>> GetEntities(CancellationToken cancellationToken)
+    {
+        var entities = await entitiesService.GetEntitiesAsync(cancellationToken);
+        return Ok(new EntitiesListResponse(entities.Count, entities));
+    }
+
     [HttpGet("status")]
     public ActionResult<HomeAssistantStatusResponse> GetStatus()
     {
@@ -67,6 +75,8 @@ public sealed record HomeAssistantStatusResponse(
     DateTimeOffset? LastDisconnectAtUtc,
     string? LastError,
     IReadOnlyList<HomeAssistantStateChangeDto> RecentStateChanges);
+
+public sealed record EntitiesListResponse(int Count, IReadOnlyList<HomeAssistantEntityDto> Items);
 
 public sealed record HomeAssistantStateChangeDto(
     string EntityId,
