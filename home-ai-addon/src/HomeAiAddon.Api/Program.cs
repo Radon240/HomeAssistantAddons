@@ -77,6 +77,8 @@ try
         client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
     });
 
+    builder.Services.AddHostedService<BehaviorAnalysisHostedService>();
+
     builder.Services.AddSingleton<HomeAssistantConnectionState>();
     builder.Services.AddSingleton<RuntimeMetrics>();
     builder.Services.AddSingleton<HomeAssistantEntityFilter>();

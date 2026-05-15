@@ -6,6 +6,15 @@ public sealed class BehaviorAnalysisOptions
 
     public string BaseUrl { get; set; } = "http://127.0.0.1:8100";
 
+    /// <summary>Start uvicorn from .NET (local Development). Disabled in Production/Docker.</summary>
+    public bool AutoStart { get; set; }
+
+    public int StartupWaitSeconds { get; set; } = 45;
+
+    public string? PythonExecutable { get; set; }
+
+    public string? MlServiceDirectory { get; set; }
+
     public int TimeoutSeconds { get; set; } = 30;
 
     public int EventLimit { get; set; } = 5000;
