@@ -36,8 +36,9 @@ public sealed class StateChangeEventStore(ApplicationDbContext db) : IStateChang
             query = query.Where(e => e.EntityId == entityId);
         }
 
+        // SQLite (EF) не поддерживает ORDER BY по DateTimeOffset — сортируем по Id (монотонный).
         var rows = await query
-            .OrderByDescending(e => e.ReceivedAtUtc)
+            .OrderByDescending(e => e.Id)
             .Take(limit)
             .ToListAsync(cancellationToken);
 
@@ -53,11 +54,11 @@ public sealed class StateChangeEventStore(ApplicationDbContext db) : IStateChang
 
         var timestamps = await db.StateChangeEvents
             .AsNoTracking()
-            .Where(e => e.ReceivedAtUtc >= since)
             .Select(e => e.ReceivedAtUtc)
             .ToListAsync(cancellationToken);
 
         return timestamps
+            .Where(d => d >= since)
             .GroupBy(d => new DateTimeOffset(d.Year, d.Month, d.Day, d.Hour, 0, 0, TimeSpan.Zero))
             .OrderBy(g => g.Key)
             .Select(g => new HourlyEventBucket(g.Key, g.Count()))
