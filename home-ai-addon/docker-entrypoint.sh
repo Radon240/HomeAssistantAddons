@@ -47,24 +47,48 @@ fi
 
 echo "Running ML analyze smoke test..."
 if ! "$PYTHON" -c "
-import json, urllib.request
+import json
+import urllib.error
+import urllib.request
+
 payload = {
     'events': [
-        {'id': 1, 'entityId': 'binary_sensor.door', 'oldState': 'off', 'newState': 'on',
-         'friendlyName': 'Door', 'timeFiredUtc': '2026-05-15T10:00:00+00:00', 'receivedAtUtc': '2026-05-15T10:00:01+00:00'},
-        {'id': 2, 'entityId': 'light.kitchen', 'oldState': 'off', 'newState': 'on',
-         'friendlyName': 'Kitchen', 'timeFiredUtc': '2026-05-15T10:00:30+00:00', 'receivedAtUtc': '2026-05-15T10:00:31+00:00'},
+        {
+            'id': 1,
+            'entityId': 'binary_sensor.door',
+            'oldState': 'off',
+            'newState': 'on',
+            'friendlyName': 'Door',
+            'timeFiredUtc': '2026-05-15T10:00:00+00:00',
+            'receivedAtUtc': '2026-05-15T10:00:01+00:00',
+        },
+        {
+            'id': 2,
+            'entityId': 'light.kitchen',
+            'oldState': 'off',
+            'newState': 'on',
+            'friendlyName': 'Kitchen',
+            'timeFiredUtc': '2026-05-15T10:00:30+00:00',
+            'receivedAtUtc': '2026-05-15T10:00:31+00:00',
+        },
     ],
-    'options': {'minSupport': 1, 'minConfidence': 0.5}
+    'options': {'minSupport': 2, 'minConfidence': 0.5},
 }
+body = json.dumps(payload).encode('utf-8')
 req = urllib.request.Request(
     'http://127.0.0.1:8100/api/v1/analyze',
-    data=json.dumps(payload).encode(),
+    data=body,
     headers={'Content-Type': 'application/json'},
     method='POST',
 )
-urllib.request.urlopen(req, timeout=60)
-print('smoke ok')
+try:
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f'unexpected status {resp.status}')
+    print('smoke ok')
+except urllib.error.HTTPError as exc:
+    detail = exc.read().decode('utf-8', errors='replace')
+    raise SystemExit(f'smoke analyze failed: HTTP {exc.code}: {detail}') from exc
 "; then
   echo "ML analyze smoke test failed. Log:"
   tail -n 40 "$ML_LOG" || true
