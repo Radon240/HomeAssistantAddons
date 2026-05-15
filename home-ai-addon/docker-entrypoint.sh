@@ -18,7 +18,7 @@ echo "Starting behavior analysis ML service ($PYTHON)..."
   --host 127.0.0.1 \
   --port 8100 \
   --workers 1 \
-  --chdir /app/ml-service \
+  --app-dir /app/ml-service \
   >>"$ML_LOG" 2>&1 &
 ML_PID=$!
 
