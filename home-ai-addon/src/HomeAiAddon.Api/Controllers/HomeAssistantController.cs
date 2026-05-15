@@ -1,6 +1,5 @@
 using HomeAiAddon.Api.HomeAssistant;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace HomeAiAddon.Api.Controllers;
 
@@ -8,15 +7,18 @@ namespace HomeAiAddon.Api.Controllers;
 [Route("api/homeassistant")]
 public sealed class HomeAssistantController(
     HomeAssistantConnectionState connectionState,
-    IOptionsMonitor<HomeAssistantIntegrationOptions> options,
-    IHomeAssistantAccessTokenProvider tokens) : ControllerBase
+    HomeAssistantConnectionResolver connectionResolver) : ControllerBase
 {
     [HttpGet("status")]
     public ActionResult<HomeAssistantStatusResponse> GetStatus()
     {
-        var baseConfigured = HomeAssistantUriHelper.TryGetHttpOrigin(options.CurrentValue.BaseUrl, out _);
-        var tokenConfigured = !string.IsNullOrEmpty(tokens.GetAccessToken());
-        var snapshot = connectionState.GetSnapshot(baseConfigured, tokenConfigured);
+        var resolved = connectionResolver.TryResolve(out var endpoints);
+        var authSource = resolved ? endpoints.AuthSource : "none";
+        var usesSupervisor = resolved && endpoints.UsesSupervisorProxy;
+        var snapshot = connectionState.GetSnapshot(
+            integrationReady: resolved,
+            usesSupervisorProxy: usesSupervisor,
+            authSource: authSource);
 
         var recent = snapshot.RecentStateChanges.Select(e => new HomeAssistantStateChangeDto(
             e.EntityId,
@@ -28,7 +30,8 @@ public sealed class HomeAssistantController(
 
         return Ok(new HomeAssistantStatusResponse(
             snapshot.IntegrationConfigured,
-            snapshot.BaseUrlConfigured,
+            usesSupervisor,
+            authSource,
             snapshot.AccessTokenConfigured,
             snapshot.WebSocketConnected,
             snapshot.StateChangeEventsReceived,
@@ -42,7 +45,8 @@ public sealed class HomeAssistantController(
 
 public sealed record HomeAssistantStatusResponse(
     bool IntegrationConfigured,
-    bool BaseUrlConfigured,
+    bool UsesSupervisorProxy,
+    string AuthSource,
     bool AccessTokenConfigured,
     bool WebSocketConnected,
     long StateChangeEventsReceived,

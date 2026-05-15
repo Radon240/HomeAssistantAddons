@@ -41,17 +41,12 @@ builder.Services.AddOptions<HomeAssistantIntegrationOptions>()
     });
 
 builder.Services.AddSingleton<HomeAssistantConnectionState>();
-builder.Services.AddSingleton<IHomeAssistantAccessTokenProvider, EnvironmentHomeAssistantAccessTokenProvider>();
+builder.Services.AddSingleton<IHomeAssistantAccessTokenProvider, HomeAssistantAccessTokenProvider>();
+builder.Services.AddSingleton<HomeAssistantConnectionResolver>();
 builder.Services.AddTransient<HomeAssistantBearerAuthHandler>();
 builder.Services.AddHttpClient("HomeAssistant")
-    .ConfigureHttpClient((sp, client) =>
+    .ConfigureHttpClient(client =>
     {
-        var o = sp.GetRequiredService<IOptionsMonitor<HomeAssistantIntegrationOptions>>().CurrentValue;
-        if (HomeAssistantUriHelper.TryGetHttpOrigin(o.BaseUrl, out var origin))
-        {
-            client.BaseAddress = origin;
-        }
-
         client.Timeout = TimeSpan.FromSeconds(30);
         client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
     })

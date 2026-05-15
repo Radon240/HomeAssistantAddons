@@ -1,10 +1,15 @@
 namespace HomeAiAddon.Api.HomeAssistant;
 
 /// <summary>
-/// Имена переменных окружения для интеграции. Токен читается только отсюда (см. официальные PAT в документации HA).
+/// Переменные окружения для доступа к Home Assistant.
+/// В аддоне Supervisor подставляет <see cref="SupervisorTokenVariable"/> автоматически
+/// (см. https://developers.home-assistant.io/docs/add-ons/communication).
 /// </summary>
 public static class HomeAssistantEnvironment
 {
-    /// <summary>Long-lived access token (Personal Access Token). Не помещать в appsettings или options.json.</summary>
+    /// <summary>Токен Supervisor — Bearer для прокси Core API / WebSocket.</summary>
+    public const string SupervisorTokenVariable = "SUPERVISOR_TOKEN";
+
+    /// <summary>Опционально: long-lived token для локальной отладки вне Supervisor.</summary>
     public const string AccessTokenVariable = "HOME_ASSISTANT_ACCESS_TOKEN";
 }

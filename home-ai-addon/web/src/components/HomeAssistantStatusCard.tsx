@@ -3,7 +3,8 @@ import { fetchJson } from "../api/client";
 
 export type HomeAssistantStatusResponse = {
   integrationConfigured: boolean;
-  baseUrlConfigured: boolean;
+  usesSupervisorProxy: boolean;
+  authSource: string;
   accessTokenConfigured: boolean;
   webSocketConnected: boolean;
   stateChangeEventsReceived: number;
@@ -81,8 +82,8 @@ export function HomeAssistantStatusCard() {
             <span className="mono">{data.stateChangeEventsReceived}</span>
           </div>
           <div className="muted" style={{ fontSize: 13 }}>
-            URL: {data.baseUrlConfigured ? "задан" : "нет"} · токен (только env):{" "}
-            {data.accessTokenConfigured ? "задан" : "нет"}
+            API: {data.usesSupervisorProxy ? "Supervisor (авто)" : "прямой URL"} · auth:{" "}
+            {data.authSource}
           </div>
           {data.lastError ? (
             <div className="bad" style={{ fontSize: 13 }}>

@@ -2,8 +2,6 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Options;
-
 namespace HomeAiAddon.Api.HomeAssistant;
 
 /// <summary>
@@ -12,7 +10,7 @@ namespace HomeAiAddon.Api.HomeAssistant;
 /// </summary>
 public sealed class HomeAssistantWebSocketHostedService(
     ILogger<HomeAssistantWebSocketHostedService> logger,
-    IOptionsMonitor<HomeAssistantIntegrationOptions> optionsMonitor,
+    HomeAssistantConnectionResolver connectionResolver,
     IHomeAssistantAccessTokenProvider accessTokenProvider,
     HomeAssistantConnectionState connectionState,
     IHttpClientFactory httpClientFactory) : BackgroundService
@@ -33,20 +31,13 @@ public sealed class HomeAssistantWebSocketHostedService(
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                var baseUrl = optionsMonitor.CurrentValue.BaseUrl;
-                var token = accessTokenProvider.GetAccessToken();
-                var baseConfigured = HomeAssistantUriHelper.TryGetHttpOrigin(baseUrl, out var origin);
-                var tokenConfigured = !string.IsNullOrEmpty(token);
-
-                if (!baseConfigured || !tokenConfigured)
+                if (!connectionResolver.TryResolve(out var endpoints))
                 {
                     connectionState.SetWebSocketConnected(false);
                     connectionState.RecordError(
-                        !baseConfigured && !tokenConfigured
-                            ? "Не заданы базовый URL и токен (см. HomeAssistant:BaseUrl / home_assistant_base_url и переменную HOME_ASSISTANT_ACCESS_TOKEN)."
-                            : !baseConfigured
-                                ? "Не задан базовый URL Home Assistant."
-                                : "Не задан токен в переменной окружения HOME_ASSISTANT_ACCESS_TOKEN.");
+                        "Нет доступа к Home Assistant: в аддоне ожидается SUPERVISOR_TOKEN от Supervisor "
+                        + "(включите homeassistant_api: true и перезапустите аддон). "
+                        + "Для локальной отладки можно задать HOME_ASSISTANT_ACCESS_TOKEN.");
 
                     try
                     {
@@ -64,12 +55,13 @@ public sealed class HomeAssistantWebSocketHostedService(
 
                 try
                 {
+                    var accessToken = accessTokenProvider.GetAccessToken()!;
                     await using var session = await HomeAssistantWebSocketSession.ConnectAndRunAsync(
                         logger,
                         connectionState,
                         httpClientFactory,
-                        origin,
-                        token!,
+                        endpoints,
+                        accessToken,
                         stoppingToken);
 
                     _reconnectAttempt = 0;
@@ -130,32 +122,37 @@ public sealed class HomeAssistantWebSocketHostedService(
         private readonly ClientWebSocket _webSocket = new();
         private readonly ILogger _logger;
         private readonly HomeAssistantConnectionState _connectionState;
+        private readonly HomeAssistantEndpoints _endpoints;
+        private readonly string _accessToken;
         private int _nextMessageId;
 
         private HomeAssistantWebSocketSession(
             ILogger logger,
-            HomeAssistantConnectionState connectionState)
+            HomeAssistantConnectionState connectionState,
+            HomeAssistantEndpoints endpoints,
+            string accessToken)
         {
             _logger = logger;
             _connectionState = connectionState;
+            _endpoints = endpoints;
+            _accessToken = accessToken;
         }
 
         public static async Task<HomeAssistantWebSocketSession> ConnectAndRunAsync(
             ILogger logger,
             HomeAssistantConnectionState connectionState,
             IHttpClientFactory httpClientFactory,
-            Uri httpOrigin,
+            HomeAssistantEndpoints endpoints,
             string accessToken,
             CancellationToken cancellationToken)
         {
-            var session = new HomeAssistantWebSocketSession(logger, connectionState);
+            var session = new HomeAssistantWebSocketSession(logger, connectionState, endpoints, accessToken);
 
             await session.PingRestApiAsync(httpClientFactory, cancellationToken).ConfigureAwait(false);
 
-            var wsUri = HomeAssistantUriHelper.BuildWebSocketUri(httpOrigin);
-            await session._webSocket.ConnectAsync(wsUri, cancellationToken).ConfigureAwait(false);
+            await session._webSocket.ConnectAsync(endpoints.WebSocketUri, cancellationToken).ConfigureAwait(false);
 
-            await session.PerformAuthenticationAsync(accessToken, cancellationToken).ConfigureAwait(false);
+            await session.PerformAuthenticationAsync(cancellationToken).ConfigureAwait(false);
             await session.SubscribeStateChangedAsync(cancellationToken).ConfigureAwait(false);
 
             connectionState.SetWebSocketConnected(true);
@@ -166,18 +163,19 @@ public sealed class HomeAssistantWebSocketHostedService(
             IHttpClientFactory httpClientFactory,
             CancellationToken cancellationToken)
         {
+            var pingUri = new Uri(_endpoints.RestApiBase, _endpoints.RestHealthCheckRelativePath);
             var client = httpClientFactory.CreateClient("HomeAssistant");
-            using var response = await client.GetAsync("/api/", HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            using var response = await client.GetAsync(pingUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
                 .ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
                 throw new InvalidOperationException(
-                    $"Home Assistant REST /api/ вернул {(int)response.StatusCode} {response.ReasonPhrase}. Проверьте BaseUrl и токен.");
+                    $"Home Assistant REST {pingUri} вернул {(int)response.StatusCode} {response.ReasonPhrase}.");
             }
         }
 
-        private async Task PerformAuthenticationAsync(string accessToken, CancellationToken cancellationToken)
+        private async Task PerformAuthenticationAsync(CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -200,7 +198,7 @@ public sealed class HomeAssistantWebSocketHostedService(
                     case "auth_required":
                         await SendJsonAsync(
                                 _webSocket,
-                                new { type = "auth", access_token = accessToken },
+                                new { type = "auth", access_token = _accessToken },
                                 cancellationToken)
                             .ConfigureAwait(false);
                         break;

@@ -68,15 +68,18 @@ public sealed class HomeAssistantConnectionState
         }
     }
 
-    public HomeAssistantIntegrationSnapshot GetSnapshot(bool baseUrlConfigured, bool accessTokenConfigured)
+    public HomeAssistantIntegrationSnapshot GetSnapshot(
+        bool integrationReady,
+        bool usesSupervisorProxy,
+        string authSource)
     {
         lock (_gate)
         {
-            var integrationConfigured = baseUrlConfigured && accessTokenConfigured;
             return new HomeAssistantIntegrationSnapshot(
-                integrationConfigured,
-                baseUrlConfigured,
-                accessTokenConfigured,
+                integrationReady,
+                usesSupervisorProxy,
+                authSource,
+                integrationReady,
                 IsWebSocketConnected,
                 Interlocked.Read(ref _stateChangeEventsReceived),
                 _lastEventReceivedAtUtc,
@@ -90,7 +93,8 @@ public sealed class HomeAssistantConnectionState
 
 public sealed record HomeAssistantIntegrationSnapshot(
     bool IntegrationConfigured,
-    bool BaseUrlConfigured,
+    bool UsesSupervisorProxy,
+    string AuthSource,
     bool AccessTokenConfigured,
     bool WebSocketConnected,
     long StateChangeEventsReceived,

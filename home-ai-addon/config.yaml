@@ -13,10 +13,14 @@ panel_title: "Home AI"
 arch:
   - aarch64
   - amd64
+# Доступ к Core API через прокси Supervisor (SUPERVISOR_TOKEN подставляется автоматически).
+# См. https://developers.home-assistant.io/docs/add-ons/communication
+homeassistant_api: true
 map: []
 options:
   display_name: "Home AI Addon"
   enable_verbose_api: false
+  # Опционально: свой URL Core (по умолчанию http://supervisor/core/api).
   home_assistant_base_url: ""
 schema:
   display_name: str?
