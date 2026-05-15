@@ -1,3 +1,4 @@
+using HomeAiAddon.Api.BehaviorAnalysis;
 using HomeAiAddon.Api.Data;
 using HomeAiAddon.Api.Health;
 using HomeAiAddon.Api.HomeAssistant;
@@ -64,6 +65,18 @@ try
             }
         });
 
+    builder.Services.AddOptions<BehaviorAnalysisOptions>()
+        .Bind(builder.Configuration.GetSection(BehaviorAnalysisOptions.SectionName))
+        .ValidateOnStart();
+
+    builder.Services.AddHttpClient<IBehaviorAnalysisClient, BehaviorAnalysisClient>((sp, client) =>
+    {
+        var opts = sp.GetRequiredService<IOptions<BehaviorAnalysisOptions>>().Value;
+        client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
+        client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds);
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+    });
+
     builder.Services.AddSingleton<HomeAssistantConnectionState>();
     builder.Services.AddSingleton<RuntimeMetrics>();
     builder.Services.AddSingleton<HomeAssistantEntityFilter>();
@@ -91,7 +104,8 @@ try
 
     builder.Services.AddHealthChecks()
         .AddCheck<DatabaseHealthCheck>("database")
-        .AddCheck<HomeAssistantIntegrationHealthCheck>("home_assistant");
+        .AddCheck<HomeAssistantIntegrationHealthCheck>("home_assistant")
+        .AddCheck<BehaviorAnalysisHealthCheck>("behavior_analysis");
 
     builder.Services.AddControllers()
         .AddJsonOptions(options =>

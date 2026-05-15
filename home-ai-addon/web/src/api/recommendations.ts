@@ -1,0 +1,39 @@
+import { fetchJson } from "./client";
+
+export interface SequenceStep {
+  label: string;
+  entityId: string;
+  newState: string | null;
+  friendlyName: string | null;
+}
+
+export interface SuggestedAutomation {
+  triggerEntityId: string;
+  triggerToState: string | null;
+  actionEntityIds: string[];
+  actionToStates: (string | null)[];
+}
+
+export interface Recommendation {
+  id: string;
+  sequence: SequenceStep[];
+  supportCount: number;
+  sessionCount: number;
+  confidence: number;
+  frequencyScore: number;
+  title: string;
+  description: string;
+  suggestedAutomation: SuggestedAutomation;
+}
+
+export interface RecommendationsResponse {
+  analyzedEventCount: number;
+  sessionCount: number;
+  patternCandidates: number;
+  recommendations: Recommendation[];
+  message: string | null;
+}
+
+export function fetchRecommendations(): Promise<RecommendationsResponse> {
+  return fetchJson<RecommendationsResponse>("/api/recommendations");
+}

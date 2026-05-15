@@ -14,6 +14,10 @@ public interface IStateChangeEventStore
     Task<IReadOnlyList<HourlyEventBucket>> GetHourlyStatsAsync(
         int hours,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<StateChangeEventDto>> GetRecentForAnalysisAsync(
+        int limit,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record StateChangeEventDto(

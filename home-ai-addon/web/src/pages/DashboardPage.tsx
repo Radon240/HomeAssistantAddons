@@ -15,6 +15,9 @@ export function DashboardPage() {
             <Link to="/events">События</Link> — лента и фильтр по entity_id.
           </li>
           <li>
+            <Link to="/recommendations">Рекомендации</Link> — повторяющиеся сценарии и confidence.
+          </li>
+          <li>
             <Link to="/status">Статус</Link> — health, API, метрики.
           </li>
         </ul>
