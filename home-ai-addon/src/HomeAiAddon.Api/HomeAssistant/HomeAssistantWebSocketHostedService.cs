@@ -53,6 +53,12 @@ public sealed class HomeAssistantWebSocketHostedService(
 
                 connectionState.ClearLastError();
 
+                logger.LogInformation(
+                    "Home Assistant: подключение REST {Rest}, WebSocket {Ws} (supervisor={Supervisor})",
+                    endpoints.RestApiBase,
+                    endpoints.WebSocketUri,
+                    endpoints.UsesSupervisorProxy);
+
                 try
                 {
                     var accessToken = accessTokenProvider.GetAccessToken()!;

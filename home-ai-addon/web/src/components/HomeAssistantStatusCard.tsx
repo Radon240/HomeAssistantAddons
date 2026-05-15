@@ -7,6 +7,8 @@ export type HomeAssistantStatusResponse = {
   authSource: string;
   accessTokenConfigured: boolean;
   webSocketConnected: boolean;
+  restApiBase: string | null;
+  webSocketUri: string | null;
   stateChangeEventsReceived: number;
   lastEventReceivedAtUtc: string | null;
   lastConnectedAtUtc: string | null;
@@ -85,6 +87,11 @@ export function HomeAssistantStatusCard() {
             API: {data.usesSupervisorProxy ? "Supervisor (авто)" : "прямой URL"} · auth:{" "}
             {data.authSource}
           </div>
+          {data.webSocketUri ? (
+            <div className="muted mono" style={{ fontSize: 12 }}>
+              WS: {data.webSocketUri}
+            </div>
+          ) : null}
           {data.lastError ? (
             <div className="bad" style={{ fontSize: 13 }}>
               {data.lastError}

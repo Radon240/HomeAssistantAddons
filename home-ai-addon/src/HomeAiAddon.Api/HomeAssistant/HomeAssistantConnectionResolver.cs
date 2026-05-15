@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace HomeAiAddon.Api.HomeAssistant;
@@ -8,7 +9,8 @@ namespace HomeAiAddon.Api.HomeAssistant;
 /// </summary>
 public sealed class HomeAssistantConnectionResolver(
     IOptionsMonitor<HomeAssistantIntegrationOptions> options,
-    IHomeAssistantAccessTokenProvider tokenProvider)
+    IHomeAssistantAccessTokenProvider tokenProvider,
+    ILogger<HomeAssistantConnectionResolver> logger)
 {
     public static readonly Uri SupervisorRestApiBase = new("http://supervisor/core/api");
     public static readonly Uri SupervisorWebSocketUri = new("ws://supervisor/core/websocket");
@@ -23,29 +25,46 @@ public sealed class HomeAssistantConnectionResolver(
         }
 
         var authSource = tokenProvider.GetAuthSource();
-        var custom = options.CurrentValue.BaseUrl?.Trim();
 
-        if (string.IsNullOrEmpty(custom))
+        // SUPERVISOR_TOKEN действует только через прокси Supervisor, не на homeassistant:8123.
+        if (authSource == "supervisor")
         {
+            var custom = options.CurrentValue.BaseUrl?.Trim();
+            if (!string.IsNullOrEmpty(custom) &&
+                HomeAssistantUriHelper.TryGetHttpOrigin(custom, out var origin) &&
+                !IsSupervisorHost(origin))
+            {
+                logger.LogWarning(
+                    "home_assistant_base_url ({BaseUrl}) игнорируется при auth=supervisor. "
+                    + "Используется прокси Supervisor. Очистите поле в настройках аддона.",
+                    custom);
+            }
+
             endpoints = CreateSupervisorEndpoints(authSource);
             return true;
         }
 
-        if (!HomeAssistantUriHelper.TryGetHttpOrigin(custom, out var origin))
+        var manualBase = options.CurrentValue.BaseUrl?.Trim();
+        if (string.IsNullOrEmpty(manualBase))
         {
             return false;
         }
 
-        if (IsSupervisorHost(origin))
+        if (!HomeAssistantUriHelper.TryGetHttpOrigin(manualBase, out var manualOrigin))
+        {
+            return false;
+        }
+
+        if (IsSupervisorHost(manualOrigin))
         {
             endpoints = CreateSupervisorEndpoints(authSource);
             return true;
         }
 
-        var restBase = new Uri(origin, "/api/");
+        var restBase = new Uri(manualOrigin, "/api/");
         endpoints = new HomeAssistantEndpoints(
             restBase,
-            HomeAssistantUriHelper.BuildWebSocketUri(origin),
+            HomeAssistantUriHelper.BuildWebSocketUri(manualOrigin),
             "config",
             authSource,
             UsesSupervisorProxy: false);

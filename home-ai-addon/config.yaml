@@ -20,7 +20,8 @@ map: []
 options:
   display_name: "Home AI Addon"
   enable_verbose_api: false
-  # Опционально: свой URL Core (по умолчанию http://supervisor/core/api).
+  # Оставьте пустым в аддоне HA (используется прокси Supervisor автоматически).
+  # Заполняйте только для локальной отладки с HOME_ASSISTANT_ACCESS_TOKEN, напр. http://127.0.0.1:8123
   home_assistant_base_url: ""
 schema:
   display_name: str?

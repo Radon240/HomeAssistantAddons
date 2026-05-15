@@ -28,12 +28,22 @@ public sealed class HomeAssistantController(
             e.TimeFiredUtc,
             e.ReceivedAtUtc)).ToList();
 
+        string? restApiBase = null;
+        string? webSocketUri = null;
+        if (resolved)
+        {
+            restApiBase = endpoints.RestApiBase.ToString();
+            webSocketUri = endpoints.WebSocketUri.ToString();
+        }
+
         return Ok(new HomeAssistantStatusResponse(
             snapshot.IntegrationConfigured,
             usesSupervisor,
             authSource,
             snapshot.AccessTokenConfigured,
             snapshot.WebSocketConnected,
+            restApiBase,
+            webSocketUri,
             snapshot.StateChangeEventsReceived,
             snapshot.LastEventReceivedAtUtc,
             snapshot.LastConnectedAtUtc,
@@ -49,6 +59,8 @@ public sealed record HomeAssistantStatusResponse(
     string AuthSource,
     bool AccessTokenConfigured,
     bool WebSocketConnected,
+    string? RestApiBase,
+    string? WebSocketUri,
     long StateChangeEventsReceived,
     DateTimeOffset? LastEventReceivedAtUtc,
     DateTimeOffset? LastConnectedAtUtc,
