@@ -73,6 +73,78 @@ namespace HomeAiAddon.Api.Migrations
 
                     b.ToTable("StateChangeEvents");
                 });
+
+            modelBuilder.Entity("HomeAiAddon.Api.Data.Entities.AnomalyAlertRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AnomalyType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("DetectedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DetectionId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Explanation")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetricsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("PersistedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RelatedEventIdsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Score")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DetectedAtUtc");
+
+                    b.HasIndex("DetectionId")
+                        .IsUnique();
+
+                    b.HasIndex("EntityId");
+
+                    b.HasIndex("Severity");
+
+                    b.ToTable("AnomalyAlerts");
+                });
 #pragma warning restore 612, 618
         }
     }

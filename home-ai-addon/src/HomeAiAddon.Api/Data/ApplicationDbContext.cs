@@ -10,6 +10,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public DbSet<StateChangeEventRecord> StateChangeEvents => Set<StateChangeEventRecord>();
 
+    public DbSet<AnomalyAlertRecord> AnomalyAlerts => Set<AnomalyAlertRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AddonMetadata>(entity =>
@@ -27,6 +29,24 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.Property(e => e.FriendlyName).HasMaxLength(255);
             entity.HasIndex(e => e.ReceivedAtUtc);
             entity.HasIndex(e => e.EntityId);
+        });
+
+        modelBuilder.Entity<AnomalyAlertRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DetectionId).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.EntityId).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.AnomalyType).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Severity).HasMaxLength(16).IsRequired();
+            entity.Property(e => e.Method).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Title).HasMaxLength(512).IsRequired();
+            entity.Property(e => e.Explanation).HasMaxLength(2048).IsRequired();
+            entity.Property(e => e.RelatedEventIdsJson).IsRequired();
+            entity.Property(e => e.MetricsJson).IsRequired();
+            entity.HasIndex(e => e.DetectionId).IsUnique();
+            entity.HasIndex(e => e.DetectedAtUtc);
+            entity.HasIndex(e => e.EntityId);
+            entity.HasIndex(e => e.Severity);
         });
     }
 }

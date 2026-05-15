@@ -8,7 +8,17 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.feedback_service import apply_feedback_to_learner, get_feedback_learner
-from app.models import AnalyzeOptions, AnalyzeRequest, AnalyzeResponse, FeedbackRequest, FeedbackResponse
+from app.anomaly_detector import detect_anomalies
+from app.models import (
+    AnalyzeOptions,
+    AnalyzeRequest,
+    AnalyzeResponse,
+    AnomalyDetectRequest,
+    AnomalyDetectionOptions,
+    AnomalyResponse,
+    FeedbackRequest,
+    FeedbackResponse,
+)
 from app.recommender import analyze_events
 
 logging.basicConfig(
@@ -60,6 +70,34 @@ async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
 def feedback_stats() -> dict[str, int]:
     learner = get_feedback_learner()
     return {"trainingSamples": learner.training_samples}
+
+
+@app.post("/api/v1/anomalies", response_model=AnomalyResponse)
+async def detect(request: AnomalyDetectRequest) -> AnomalyResponse:
+    if not request.events:
+        raise HTTPException(status_code=400, detail="events must not be empty")
+
+    events = request.events
+    if len(events) > MAX_EVENTS_PER_REQUEST:
+        logger.info(
+            "Truncating events from %s to %s for anomaly detection",
+            len(events),
+            MAX_EVENTS_PER_REQUEST,
+        )
+        events = events[-MAX_EVENTS_PER_REQUEST:]
+
+    options = request.options or AnomalyDetectionOptions()
+    try:
+        result = await asyncio.to_thread(detect_anomalies, events, options)
+        logger.info(
+            "Anomaly detection on %s events -> %s anomalies",
+            result.analyzed_event_count,
+            result.anomaly_count,
+        )
+        return result
+    except Exception as exc:
+        logger.exception("Anomaly detection failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)

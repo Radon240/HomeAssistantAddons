@@ -316,3 +316,45 @@ button:disabled {
   font-size: 12px;
   border-radius: 8px;
 }
+
+.severity-badge {
+  font-weight: 700;
+  font-size: 0.85rem;
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.severity-low {
+  color: #c8e6ff;
+  background: rgba(138, 180, 255, 0.12);
+  border: 1px solid rgba(138, 180, 255, 0.35);
+}
+
+.severity-medium {
+  color: #ffe6a8;
+  background: rgba(255, 200, 120, 0.12);
+  border: 1px solid rgba(255, 200, 120, 0.4);
+}
+
+.severity-high {
+  color: #ffb4b4;
+  background: rgba(255, 120, 120, 0.12);
+  border: 1px solid rgba(255, 120, 120, 0.45);
+}
+
+.anomaly-card.anomaly-severity-high {
+  border-color: rgba(255, 120, 120, 0.35);
+}
+
+.anomaly-score-bar.severity-bar-low {
+  background: linear-gradient(90deg, #5c7fd6, #8ab4ff);
+}
+
+.anomaly-score-bar.severity-bar-medium {
+  background: linear-gradient(90deg, #c9a227, #ffe6a8);
+}
+
+.anomaly-score-bar.severity-bar-high {
+  background: linear-gradient(90deg, #c44, #ff8a8a);
+}

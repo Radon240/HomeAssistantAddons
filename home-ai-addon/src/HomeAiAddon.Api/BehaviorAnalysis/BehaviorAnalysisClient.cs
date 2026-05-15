@@ -90,6 +90,57 @@ public sealed class BehaviorAnalysisClient(
         return payload ?? throw new InvalidOperationException("ML service returned empty feedback response.");
     }
 
+    public async Task<AnomalyDetectResponsePayload> DetectAnomaliesAsync(
+        AnomalyDetectRequestPayload request,
+        CancellationToken cancellationToken = default)
+    {
+        const int maxAttempts = 3;
+        Exception? lastError = null;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                using var response = await httpClient.PostAsJsonAsync(
+                    "/api/v1/anomalies",
+                    request,
+                    JsonOptions,
+                    cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                    logger.LogWarning(
+                        "ML anomaly detection failed: {StatusCode} {Body}",
+                        (int)response.StatusCode,
+                        body);
+                    response.EnsureSuccessStatusCode();
+                }
+
+                var payload = await response.Content.ReadFromJsonAsync<AnomalyDetectResponsePayload>(
+                    JsonOptions,
+                    cancellationToken);
+
+                return payload
+                    ?? throw new InvalidOperationException("ML service returned empty anomaly response.");
+            }
+            catch (Exception ex) when (attempt < maxAttempts && IsRetryable(ex))
+            {
+                lastError = ex;
+                logger.LogWarning(
+                    ex,
+                    "ML anomaly detection attempt {Attempt}/{MaxAttempts} failed, retrying",
+                    attempt,
+                    maxAttempts);
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            }
+        }
+
+        var detail = FormatError(lastError);
+        logger.LogError("ML anomaly detection failed after retries: {Detail}", detail);
+        throw new HttpRequestException($"ML anomaly detection failed: {detail}", lastError);
+    }
+
     public async Task<bool> IsHealthyAsync(CancellationToken cancellationToken = default)
     {
         try

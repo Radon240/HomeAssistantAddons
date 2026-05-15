@@ -24,6 +24,8 @@ options:
   domain_filter: []
   analysis_exclude_entities: []
   analysis_exclude_domains: []
+  anomaly_detection_enabled: true
+  anomaly_detection_interval_minutes: 15
 schema:
   display_name: str?
   enable_verbose_api: bool?
@@ -36,4 +38,6 @@ schema:
     - str
   analysis_exclude_domains:
     - str
+  anomaly_detection_enabled: bool?
+  anomaly_detection_interval_minutes: int(5,1440)?
 watchdog: "http://[HOST]:[PORT:8099]/health"

@@ -1,3 +1,4 @@
+using HomeAiAddon.Api.AnomalyDetection;
 using HomeAiAddon.Api.BehaviorAnalysis;
 using HomeAiAddon.Api.Data;
 using HomeAiAddon.Api.Health;
@@ -69,6 +70,22 @@ try
         .Bind(builder.Configuration.GetSection(BehaviorAnalysisOptions.SectionName))
         .ValidateOnStart();
 
+    builder.Services.AddOptions<AnomalyDetectionOptions>()
+        .Bind(builder.Configuration.GetSection(AnomalyDetectionOptions.SectionName))
+        .PostConfigure<IConfiguration>((opts, cfg) =>
+        {
+            if (bool.TryParse(cfg["anomaly_detection_enabled"], out var enabled))
+            {
+                opts.Enabled = enabled;
+            }
+
+            if (int.TryParse(cfg["anomaly_detection_interval_minutes"], out var interval))
+            {
+                opts.IntervalMinutes = interval;
+            }
+        })
+        .ValidateOnStart();
+
     builder.Services.AddHttpClient<IBehaviorAnalysisClient, BehaviorAnalysisClient>((sp, client) =>
     {
         var opts = sp.GetRequiredService<IOptions<BehaviorAnalysisOptions>>().Value;
@@ -78,6 +95,9 @@ try
     });
 
     builder.Services.AddHostedService<BehaviorAnalysisHostedService>();
+    builder.Services.AddHostedService<AnomalyDetectionHostedService>();
+    builder.Services.AddScoped<IAnomalyAlertStore, AnomalyAlertStore>();
+    builder.Services.AddScoped<AnomalyDetectionService>();
     builder.Services.AddSingleton<IAnalysisExclusionStore, AnalysisExclusionStore>();
     builder.Services.AddSingleton<AnalysisEntityFilter>();
 

@@ -18,6 +18,9 @@ export function DashboardPage() {
             <Link to="/recommendations">Рекомендации</Link> — повторяющиеся сценарии и confidence.
           </li>
           <li>
+            <Link to="/anomalies">Аномалии</Link> — необычная активность и отклонения.
+          </li>
+          <li>
             <Link to="/status">Статус</Link> — health, API, метрики.
           </li>
         </ul>

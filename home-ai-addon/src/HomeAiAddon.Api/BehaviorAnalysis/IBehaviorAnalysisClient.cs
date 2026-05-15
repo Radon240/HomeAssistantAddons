@@ -11,4 +11,8 @@ public interface IBehaviorAnalysisClient
     Task<FeedbackResponsePayload> SubmitFeedbackAsync(
         FeedbackRequestPayload request,
         CancellationToken cancellationToken = default);
+
+    Task<AnomalyDetectResponsePayload> DetectAnomaliesAsync(
+        AnomalyDetectRequestPayload request,
+        CancellationToken cancellationToken = default);
 }

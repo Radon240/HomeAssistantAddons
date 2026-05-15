@@ -77,3 +77,41 @@ public sealed record SuggestedAutomationPayload(
     IReadOnlyList<string?> ActionToStates);
 
 public sealed record MlHealthPayload(string Status, string Service);
+
+public sealed record AnomalyDetectRequestPayload(
+    IReadOnlyList<AnalyzeEventPayload> Events,
+    AnomalyDetectionOptionsPayload? Options);
+
+public sealed record AnomalyDetectionOptionsPayload(
+    int MinEvents,
+    int MinEventsPerEntity,
+    int MinHourlySamples,
+    int RollingWindowHours,
+    double ZScoreThreshold,
+    double UnusualHourMaxRatio,
+    double MinScore,
+    double MediumSeverityThreshold,
+    double HighSeverityThreshold,
+    int MaxResults,
+    int IsolationForestEstimators,
+    double IsolationForestContamination,
+    int IsolationForestMinSamples);
+
+public sealed record AnomalyDetectResponsePayload(
+    int AnalyzedEventCount,
+    int AnomalyCount,
+    IReadOnlyList<AnomalyItemPayload> Anomalies,
+    IReadOnlyDictionary<string, object>? OptionsUsed);
+
+public sealed record AnomalyItemPayload(
+    string Id,
+    string EntityId,
+    string AnomalyType,
+    string Severity,
+    double Score,
+    string Method,
+    string Title,
+    string Explanation,
+    DateTimeOffset DetectedAtUtc,
+    IReadOnlyList<long> RelatedEventIds,
+    IReadOnlyDictionary<string, object> Metrics);

@@ -150,3 +150,65 @@ class AnalyzeResponse(BaseModel):
     options_used: dict[str, Any] = Field(alias="optionsUsed")
 
     model_config = {"populate_by_name": True}
+
+
+class AnomalyDetectionOptions(BaseModel):
+    min_events: int = Field(default=50, ge=10, le=5000, alias="minEvents")
+    min_events_per_entity: int = Field(
+        default=8, ge=3, le=500, alias="minEventsPerEntity"
+    )
+    min_hourly_samples: int = Field(default=4, ge=2, le=48, alias="minHourlySamples")
+    rolling_window_hours: int = Field(default=24, ge=4, le=168, alias="rollingWindowHours")
+    z_score_threshold: float = Field(default=2.5, ge=1.5, le=6.0, alias="zScoreThreshold")
+    unusual_hour_max_ratio: float = Field(
+        default=0.05, ge=0.01, le=0.25, alias="unusualHourMaxRatio"
+    )
+    min_score: float = Field(default=0.55, ge=0.0, le=1.0, alias="minScore")
+    medium_severity_threshold: float = Field(
+        default=0.7, ge=0.0, le=1.0, alias="mediumSeverityThreshold"
+    )
+    high_severity_threshold: float = Field(
+        default=0.85, ge=0.0, le=1.0, alias="highSeverityThreshold"
+    )
+    max_results: int = Field(default=30, ge=1, le=100, alias="maxResults")
+    isolation_forest_estimators: int = Field(
+        default=50, ge=20, le=200, alias="isolationForestEstimators"
+    )
+    isolation_forest_contamination: float = Field(
+        default=0.08, ge=0.02, le=0.25, alias="isolationForestContamination"
+    )
+    isolation_forest_min_samples: int = Field(
+        default=20, ge=10, le=500, alias="isolationForestMinSamples"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class AnomalyDetectRequest(BaseModel):
+    events: list[EventInput]
+    options: AnomalyDetectionOptions | None = None
+
+
+class AnomalyItem(BaseModel):
+    id: str
+    entity_id: str = Field(alias="entityId")
+    anomaly_type: str = Field(alias="anomalyType")
+    severity: str
+    score: float
+    method: str
+    title: str
+    explanation: str
+    detected_at_utc: datetime = Field(alias="detectedAtUtc")
+    related_event_ids: list[int] = Field(default_factory=list, alias="relatedEventIds")
+    metrics: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"populate_by_name": True}
+
+
+class AnomalyResponse(BaseModel):
+    analyzed_event_count: int = Field(alias="analyzedEventCount")
+    anomaly_count: int = Field(alias="anomalyCount")
+    anomalies: list[AnomalyItem]
+    options_used: dict[str, Any] = Field(alias="optionsUsed")
+
+    model_config = {"populate_by_name": True}
