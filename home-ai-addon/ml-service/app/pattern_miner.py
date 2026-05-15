@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
 
 import pandas as pd
 from sklearn.preprocessing import minmax_scale
@@ -17,6 +19,23 @@ class PatternCandidate:
     confidence: float
     frequency_score: float
     tokens: tuple[ActionToken, ...]
+    occurrence_times: tuple[datetime, ...] = field(default_factory=tuple)
+
+
+def collect_pattern_occurrences(
+    sessions: list[list[ActionToken]],
+    max_length: int,
+) -> dict[str, list[datetime]]:
+    occurrences: dict[str, list[datetime]] = defaultdict(list)
+
+    for session in sessions:
+        labels = [token.label for token in session]
+        for length in range(2, min(max_length, len(labels)) + 1):
+            for start in range(0, len(labels) - length + 1):
+                pattern_key = "|".join(labels[start : start + length])
+                occurrences[pattern_key].append(session[start].occurred_at)
+
+    return occurrences
 
 
 def extract_ngram_counts(sessions: list[list[ActionToken]], max_length: int) -> pd.DataFrame:
@@ -73,6 +92,7 @@ def mine_patterns(
     tracker.observe_sessions(label_sessions)
 
     frame = extract_ngram_counts(sessions, max_sequence_length)
+    occurrence_map = collect_pattern_occurrences(sessions, max_sequence_length)
     if frame.empty:
         return []
 
@@ -108,6 +128,9 @@ def mine_patterns(
         )
         confidence = support / prefix_count
 
+        pattern_key = "|".join(labels)
+        times = tuple(occurrence_map.get(pattern_key, []))
+
         candidates.append(
             PatternCandidate(
                 labels=labels,
@@ -116,6 +139,7 @@ def mine_patterns(
                 confidence=round(confidence, 4),
                 frequency_score=0.0,
                 tokens=row["tokens"],
+                occurrence_times=times,
             )
         )
 
@@ -134,6 +158,7 @@ def mine_patterns(
                 confidence=candidate.confidence,
                 frequency_score=round(float(score), 4),
                 tokens=candidate.tokens,
+                occurrence_times=candidate.occurrence_times,
             )
         )
 

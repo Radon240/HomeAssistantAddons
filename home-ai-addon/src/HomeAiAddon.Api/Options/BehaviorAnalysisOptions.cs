@@ -23,9 +23,13 @@ public sealed class BehaviorAnalysisOptions
 
     public double MinConfidence { get; set; } = 0.55;
 
+    public double MinCadenceConfidence { get; set; } = 0.4;
+
+    public bool RequirePeriodic { get; set; }
+
     public int MaxGapSeconds { get; set; } = 300;
 
     public int MaxSequenceLength { get; set; } = 4;
 
-    public int LookbackHours { get; set; } = 168;
+    public int LookbackHours { get; set; } = 336;
 }

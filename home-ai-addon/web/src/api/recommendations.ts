@@ -21,6 +21,10 @@ export interface Recommendation {
   sessionCount: number;
   confidence: number;
   frequencyScore: number;
+  cadence: string;
+  cadenceConfidence: number;
+  cadenceLabel: string;
+  scheduleHint: string;
   title: string;
   description: string;
   suggestedAutomation: SuggestedAutomation;

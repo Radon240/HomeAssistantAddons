@@ -13,6 +13,11 @@ from app.models import (
 from app.pattern_miner import PatternCandidate, mine_patterns
 from app.river_tracker import OnlinePatternTracker
 from app.sequence_builder import build_sessions
+from app.temporal_analysis import (
+    CADENCE_IRREGULAR,
+    cadence_label_ru,
+    detect_cadence,
+)
 
 
 def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> AnalyzeResponse:
@@ -33,12 +38,20 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
     for candidate in candidates:
         if candidate.confidence < options.min_confidence:
             continue
-        recommendation = _to_recommendation(candidate, session_count=len(sessions))
+        recommendation = _to_recommendation(
+            candidate,
+            session_count=len(sessions),
+            options=options,
+        )
         if recommendation is not None:
             recommendations.append(recommendation)
 
     recommendations.sort(
-        key=lambda item: (item.confidence, item.support_count, item.frequency_score),
+        key=lambda item: (
+            item.cadence != CADENCE_IRREGULAR,
+            item.cadence_confidence * 0.4 + item.confidence * 0.6,
+            item.support_count,
+        ),
         reverse=True,
     )
 
@@ -51,8 +64,21 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
     )
 
 
-def _to_recommendation(candidate: PatternCandidate, session_count: int) -> Recommendation | None:
+def _to_recommendation(
+    candidate: PatternCandidate,
+    session_count: int,
+    options: AnalyzeOptions,
+) -> Recommendation | None:
     if len(candidate.tokens) < 2:
+        return None
+
+    cadence_result = detect_cadence(list(candidate.occurrence_times))
+    if options.require_periodic and cadence_result.cadence == CADENCE_IRREGULAR:
+        return None
+    if (
+        cadence_result.cadence != CADENCE_IRREGULAR
+        and cadence_result.confidence < options.min_cadence_confidence
+    ):
         return None
 
     steps = [
@@ -72,11 +98,26 @@ def _to_recommendation(candidate: PatternCandidate, session_count: int) -> Recom
         action.friendly_name or action.entity_id for action in actions
     )
 
-    title = f"Автоматизация: {trigger_name} → {action_names}"
+    cadence_label = cadence_label_ru(cadence_result.cadence)
+    title = f"{cadence_label}: {trigger_name} → {action_names}"
+
+    schedule_part = (
+        cadence_result.schedule_hint
+        if cadence_result.cadence != CADENCE_IRREGULAR
+        else "без устойчивого часового/дневного/недельного ритма"
+    )
     description = (
-        f"Повторяющийся сценарий из {len(steps)} шагов обнаружен "
-        f"{candidate.support_count} раз(а) в {session_count} сессиях. "
-        f"Уверенность: {int(candidate.confidence * 100)}%."
+        f"Сценарий из {len(steps)} шагов повторился {candidate.support_count} раз(а). "
+        f"Расписание: {schedule_part}. "
+        f"Уверенность сценария: {int(candidate.confidence * 100)}%, "
+        f"уверенность расписания: {int(cadence_result.confidence * 100)}%."
+    )
+
+    combined_confidence = round(
+        candidate.confidence * 0.6 + cadence_result.confidence * 0.4
+        if cadence_result.cadence != CADENCE_IRREGULAR
+        else candidate.confidence * 0.85,
+        4,
     )
 
     pattern_id = hashlib.sha1("|".join(candidate.labels).encode("utf-8")).hexdigest()[:12]
@@ -86,8 +127,12 @@ def _to_recommendation(candidate: PatternCandidate, session_count: int) -> Recom
         sequence=steps,
         support_count=candidate.support_count,
         session_count=session_count,
-        confidence=candidate.confidence,
+        confidence=combined_confidence,
         frequency_score=candidate.frequency_score,
+        cadence=cadence_result.cadence,
+        cadence_confidence=cadence_result.confidence,
+        cadence_label=cadence_label,
+        schedule_hint=cadence_result.schedule_hint,
         title=title,
         description=description,
         suggested_automation=SuggestedAutomation(

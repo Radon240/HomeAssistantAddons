@@ -21,9 +21,13 @@ class EventInput(BaseModel):
 class AnalyzeOptions(BaseModel):
     min_support: int = Field(default=3, ge=2, le=100, alias="minSupport")
     min_confidence: float = Field(default=0.55, ge=0.0, le=1.0, alias="minConfidence")
+    min_cadence_confidence: float = Field(
+        default=0.4, ge=0.0, le=1.0, alias="minCadenceConfidence"
+    )
+    require_periodic: bool = Field(default=False, alias="requirePeriodic")
     max_gap_seconds: int = Field(default=300, ge=30, le=3600, alias="maxGapSeconds")
     max_sequence_length: int = Field(default=4, ge=2, le=8, alias="maxSequenceLength")
-    lookback_hours: int = Field(default=168, ge=1, le=720, alias="lookbackHours")
+    lookback_hours: int = Field(default=336, ge=24, le=2160, alias="lookbackHours")
 
     model_config = {"populate_by_name": True}
 
@@ -54,9 +58,15 @@ class Recommendation(BaseModel):
     session_count: int
     confidence: float
     frequency_score: float
+    cadence: str
+    cadence_confidence: float = Field(alias="cadenceConfidence")
+    cadence_label: str = Field(alias="cadenceLabel")
+    schedule_hint: str = Field(alias="scheduleHint")
     title: str
     description: str
     suggested_automation: SuggestedAutomation
+
+    model_config = {"populate_by_name": True}
 
 
 class AnalyzeResponse(BaseModel):

@@ -65,6 +65,8 @@ public sealed class RecommendationsController(
                 new AnalyzeOptionsPayload(
                     opts.MinSupport,
                     opts.MinConfidence,
+                    opts.MinCadenceConfidence,
+                    opts.RequirePeriodic,
                     opts.MaxGapSeconds,
                     opts.MaxSequenceLength,
                     opts.LookbackHours));

@@ -34,7 +34,7 @@ export function RecommendationsPage() {
           <div>
             <h2 style={{ marginTop: 0 }}>Рекомендации</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Повторяющиеся сценарии на основе событий Home Assistant (лёгкий анализ последовательностей).
+              Повторяющиеся сценарии с расписанием: каждый час, ежедневно, еженедельно и др.
             </p>
           </div>
           <button type="button" onClick={() => void load()} disabled={loading}>

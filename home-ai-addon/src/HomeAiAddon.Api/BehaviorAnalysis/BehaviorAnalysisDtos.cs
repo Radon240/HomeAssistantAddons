@@ -16,6 +16,8 @@ public sealed record AnalyzeEventPayload(
 public sealed record AnalyzeOptionsPayload(
     int MinSupport,
     double MinConfidence,
+    double MinCadenceConfidence,
+    bool RequirePeriodic,
     int MaxGapSeconds,
     int MaxSequenceLength,
     int LookbackHours);
@@ -34,6 +36,10 @@ public sealed record RecommendationPayload(
     int SessionCount,
     double Confidence,
     double FrequencyScore,
+    string Cadence,
+    double CadenceConfidence,
+    string CadenceLabel,
+    string ScheduleHint,
     string Title,
     string Description,
     SuggestedAutomationPayload SuggestedAutomation);

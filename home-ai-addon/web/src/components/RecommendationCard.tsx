@@ -6,12 +6,25 @@ interface RecommendationCardProps {
 
 export function RecommendationCard({ item }: RecommendationCardProps) {
   const confidencePercent = Math.round(item.confidence * 100);
+  const cadencePercent = Math.round(item.cadenceConfidence * 100);
 
   return (
     <article className="event-item recommendation-card">
       <div className="recommendation-header">
         <h3 style={{ margin: 0, fontSize: "1.05rem" }}>{item.title}</h3>
         <span className="confidence-badge">{confidencePercent}%</span>
+      </div>
+      <div className="cadence-row">
+        <span className="cadence-badge">{item.cadenceLabel}</span>
+        {item.cadence !== "irregular" ? (
+          <span className="muted" style={{ fontSize: 12 }}>
+            {item.scheduleHint} · расписание {cadencePercent}%
+          </span>
+        ) : (
+          <span className="muted" style={{ fontSize: 12 }}>
+            {item.scheduleHint || "Без устойчивого расписания"}
+          </span>
+        )}
       </div>
       <p className="muted" style={{ margin: "8px 0" }}>
         {item.description}
