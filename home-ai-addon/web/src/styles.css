@@ -229,3 +229,53 @@ button:disabled {
   display: grid;
   gap: 2px;
 }
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(138, 180, 255, 0.35);
+  background: rgba(138, 180, 255, 0.1);
+  font-size: 12px;
+}
+
+.chip-domain {
+  border-color: rgba(255, 200, 120, 0.35);
+  background: rgba(255, 200, 120, 0.08);
+}
+
+.chip-readonly {
+  opacity: 0.75;
+  border-style: dashed;
+}
+
+.chip-remove {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preset-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}

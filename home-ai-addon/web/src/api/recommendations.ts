@@ -42,13 +42,35 @@ export interface RecommendationsResponse {
   analysisExcludeDomains: string[];
 }
 
-export interface AnalysisFiltersResponse {
+export interface AnalysisExclusionsResponse {
+  uiExcludeEntities: string[];
+  uiExcludeDomains: string[];
+  configExcludeEntities: string[];
+  configExcludeDomains: string[];
+  effectiveExcludeEntities: string[];
+  effectiveExcludeDomains: string[];
+  hasExclusions: boolean;
+}
+
+export interface UpdateAnalysisExclusionsRequest {
   excludeEntities: string[];
   excludeDomains: string[];
-  hasExclusions: boolean;
-  hint: string;
 }
 
 export function fetchRecommendations(): Promise<RecommendationsResponse> {
   return fetchJson<RecommendationsResponse>("/api/recommendations");
+}
+
+export function fetchAnalysisExclusions(): Promise<AnalysisExclusionsResponse> {
+  return fetchJson<AnalysisExclusionsResponse>("/api/recommendations/exclusions");
+}
+
+export function saveAnalysisExclusions(
+  body: UpdateAnalysisExclusionsRequest
+): Promise<AnalysisExclusionsResponse> {
+  return fetchJson<AnalysisExclusionsResponse>("/api/recommendations/exclusions", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
 }

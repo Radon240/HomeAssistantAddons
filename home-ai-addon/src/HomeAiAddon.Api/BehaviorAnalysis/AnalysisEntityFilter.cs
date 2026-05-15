@@ -1,29 +1,17 @@
 using HomeAiAddon.Api.HomeAssistant;
-using HomeAiAddon.Api.Options;
-using Microsoft.Extensions.Options;
 
 namespace HomeAiAddon.Api.BehaviorAnalysis;
 
-public sealed class AnalysisEntityFilter(IOptionsMonitor<AddonOptions> options)
+public sealed class AnalysisEntityFilter(IAnalysisExclusionStore exclusionStore)
 {
     public bool ShouldInclude(string entityId)
     {
-        var opts = options.CurrentValue;
+        var snapshot = exclusionStore.GetSnapshot();
         return !EntityPatternMatcher.IsExcludedFromAnalysis(
             entityId,
-            opts.AnalysisExcludeEntities,
-            opts.AnalysisExcludeDomains);
+            snapshot.EffectiveExcludeEntities,
+            snapshot.EffectiveExcludeDomains);
     }
 
-    public AnalysisFilterSettings GetSettings() =>
-        new(
-            options.CurrentValue.AnalysisExcludeEntities,
-            options.CurrentValue.AnalysisExcludeDomains);
-}
-
-public sealed record AnalysisFilterSettings(
-    IReadOnlyList<string> ExcludeEntities,
-    IReadOnlyList<string> ExcludeDomains)
-{
-    public bool HasExclusions => ExcludeEntities.Count > 0 || ExcludeDomains.Count > 0;
+    public AnalysisExclusionsSnapshot GetSnapshot() => exclusionStore.GetSnapshot();
 }

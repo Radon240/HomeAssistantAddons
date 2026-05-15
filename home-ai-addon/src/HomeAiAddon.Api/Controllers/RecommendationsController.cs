@@ -15,17 +15,6 @@ public sealed class RecommendationsController(
     IOptions<BehaviorAnalysisOptions> options,
     ILogger<RecommendationsController> logger) : ControllerBase
 {
-    [HttpGet("filters")]
-    public ActionResult<AnalysisFiltersResponse> GetFilters()
-    {
-        var settings = analysisEntityFilter.GetSettings();
-        return Ok(new AnalysisFiltersResponse(
-            settings.ExcludeEntities,
-            settings.ExcludeDomains,
-            settings.HasExclusions,
-            "Настройте analysis_exclude_entities и analysis_exclude_domains в конфигурации add-on."));
-    }
-
     [HttpGet("status")]
     public async Task<ActionResult<RecommendationsStatusResponse>> GetStatus(
         CancellationToken cancellationToken = default)
@@ -52,6 +41,7 @@ public sealed class RecommendationsController(
             }
 
             var opts = options.Value;
+            var exclusionSnapshot = analysisEntityFilter.GetSnapshot();
             var batch = await store.GetRecentForAnalysisAsync(
                 opts.EventLimit,
                 analysisEntityFilter.ShouldInclude,
@@ -59,9 +49,8 @@ public sealed class RecommendationsController(
 
             if (batch.Events.Count == 0)
             {
-                var filterSettings = analysisEntityFilter.GetSettings();
-                var hint = filterSettings.HasExclusions
-                    ? " После исключений по analysis_exclude_* не осталось событий — ослабьте фильтры."
+                var hint = exclusionSnapshot.HasExclusions
+                    ? " После исключений не осталось событий — уменьшите список исключений в UI."
                     : " Дождитесь накопления данных из Home Assistant.";
                 return Ok(new RecommendationsResponse(
                     0,
@@ -71,8 +60,8 @@ public sealed class RecommendationsController(
                     batch.ExcludedCount,
                     Array.Empty<RecommendationPayload>(),
                     "Недостаточно событий для анализа." + hint,
-                    filterSettings.ExcludeEntities,
-                    filterSettings.ExcludeDomains));
+                    exclusionSnapshot.EffectiveExcludeEntities,
+                    exclusionSnapshot.EffectiveExcludeDomains));
             }
 
             logger.LogInformation(
@@ -100,7 +89,6 @@ public sealed class RecommendationsController(
                     opts.LookbackHours));
 
             var result = await analysisClient.AnalyzeAsync(request, cancellationToken);
-            var filters = analysisEntityFilter.GetSettings();
             return Ok(new RecommendationsResponse(
                 result.AnalyzedEventCount,
                 result.SessionCount,
@@ -109,8 +97,8 @@ public sealed class RecommendationsController(
                 batch.ExcludedCount,
                 result.Recommendations,
                 null,
-                filters.ExcludeEntities,
-                filters.ExcludeDomains));
+                exclusionSnapshot.EffectiveExcludeEntities,
+                exclusionSnapshot.EffectiveExcludeDomains));
         }
         catch (HttpRequestException ex)
         {
@@ -138,12 +126,6 @@ public sealed record RecommendationsStatusResponse(
     bool MlHealthy,
     string MlBaseUrl,
     string Message);
-
-public sealed record AnalysisFiltersResponse(
-    IReadOnlyList<string> ExcludeEntities,
-    IReadOnlyList<string> ExcludeDomains,
-    bool HasExclusions,
-    string Hint);
 
 public sealed record RecommendationsResponse(
     int AnalyzedEventCount,
