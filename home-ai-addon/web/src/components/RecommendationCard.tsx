@@ -10,6 +10,21 @@ interface RecommendationCardProps {
   onFeedback?: (id: string, verdict: FeedbackVerdict) => void;
 }
 
+function buildFeedbackPayload(item: Recommendation) {
+  const patternKey =
+    item.patternKey?.trim() ||
+    item.sequence.map((step) => step.entityId).join("|");
+
+  return {
+    patternKey,
+    cadence: item.cadence || "irregular",
+    supportCount: item.supportCount ?? 0,
+    confidence: item.baseConfidence ?? item.confidence ?? 0,
+    frequencyScore: item.frequencyScore ?? 0,
+    entityIds: item.sequence.map((step) => step.entityId).filter(Boolean)
+  };
+}
+
 export function RecommendationCard({ item, onFeedback }: RecommendationCardProps) {
   const [submitting, setSubmitting] = useState(false);
   const [verdict, setVerdict] = useState<FeedbackVerdict | null>(null);
@@ -17,7 +32,8 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
 
   const confidencePercent = Math.round(item.confidence * 100);
   const cadencePercent = Math.round(item.cadenceConfidence * 100);
-  const learned = Math.abs(item.feedbackScore - 1) > 0.02;
+  const feedbackScore = typeof item.feedbackScore === "number" ? item.feedbackScore : 1;
+  const learned = Math.abs(feedbackScore - 1) > 0.02;
 
   async function sendFeedback(next: FeedbackVerdict) {
     if (submitting || verdict) {
@@ -29,12 +45,7 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
     try {
       await submitRecommendationFeedback(item.id, {
         verdict: next,
-        patternKey: item.patternKey,
-        cadence: item.cadence,
-        supportCount: item.supportCount,
-        confidence: item.baseConfidence,
-        frequencyScore: item.frequencyScore,
-        entityIds: item.sequence.map((step) => step.entityId)
+        ...buildFeedbackPayload(item)
       });
       setVerdict(next);
       onFeedback?.(item.id, next);
@@ -71,7 +82,7 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
       </div>
       {learned ? (
         <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
-          Ранг скорректирован обучением на отзывах (×{item.feedbackScore.toFixed(2)})
+          Ранг скорректирован обучением на отзывах (×{feedbackScore.toFixed(2)})
         </p>
       ) : null}
       <div className="mono" style={{ fontSize: 12, marginTop: 10 }}>

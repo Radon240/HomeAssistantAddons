@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EventInput(BaseModel):
@@ -54,7 +54,7 @@ class SuggestedAutomation(BaseModel):
 
 class FeedbackRequest(BaseModel):
     recommendation_id: str = Field(alias="recommendationId")
-    pattern_key: str = Field(alias="patternKey")
+    pattern_key: str = Field(default="", alias="patternKey")
     verdict: str
     cadence: str = "irregular"
     support_count: int = Field(default=0, alias="supportCount")
@@ -63,6 +63,49 @@ class FeedbackRequest(BaseModel):
     entity_ids: list[str] = Field(default_factory=list, alias="entityIds")
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("recommendation_id", "pattern_key", "verdict", "cadence", mode="before")
+    @classmethod
+    def coerce_str(cls, value: object) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    @field_validator("verdict")
+    @classmethod
+    def normalize_verdict(cls, value: str) -> str:
+        normalized = value.lower().replace("-", "_").replace(" ", "_")
+        if normalized in {"notuseful", "not_helpful"}:
+            normalized = "not_useful"
+        return normalized
+
+    @field_validator("cadence")
+    @classmethod
+    def normalize_cadence(cls, value: str) -> str:
+        return value or "irregular"
+
+    @field_validator("support_count", mode="before")
+    @classmethod
+    def coerce_support_count(cls, value: object) -> int:
+        if value is None:
+            return 0
+        return int(value)
+
+    @field_validator("confidence", "frequency_score", mode="before")
+    @classmethod
+    def coerce_float(cls, value: object) -> float:
+        if value is None:
+            return 0.0
+        return float(value)
+
+    @field_validator("entity_ids", mode="before")
+    @classmethod
+    def coerce_entity_ids(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item) for item in value if item is not None and str(item).strip()]
+        return []
 
 
 class FeedbackResponse(BaseModel):

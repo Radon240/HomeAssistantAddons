@@ -42,6 +42,8 @@ def context_from_request(request: FeedbackRequest) -> FeedbackContext:
 
 def apply_feedback_to_learner(request: FeedbackRequest) -> FeedbackLearner:
     learner = get_feedback_learner()
+    if not request.pattern_key:
+        raise ValueError("patternKey must not be empty")
     if request.verdict not in {VERDICT_USEFUL, VERDICT_NOT_USEFUL}:
         raise ValueError("verdict must be 'useful' or 'not_useful'")
     learner.record_feedback(context_from_request(request), request.verdict)

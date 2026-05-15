@@ -130,11 +130,6 @@ public sealed class RecommendationsController(
         [FromBody] RecommendationFeedbackRequest body,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(body.PatternKey))
-        {
-            return BadRequest(new { error = "patternKey is required" });
-        }
-
         var verdict = body.Verdict?.Trim().ToLowerInvariant();
         if (verdict is not ("useful" or "not_useful"))
         {
@@ -148,6 +143,17 @@ public sealed class RecommendationsController(
                 return StatusCode(503, new { error = "ML service unavailable" });
             }
 
+            var patternKey = body.PatternKey.Trim();
+            if (string.IsNullOrWhiteSpace(patternKey) && body.EntityIds is { Count: > 0 })
+            {
+                patternKey = string.Join('|', body.EntityIds);
+            }
+
+            if (string.IsNullOrWhiteSpace(patternKey))
+            {
+                return BadRequest(new { error = "patternKey is required" });
+            }
+
             var entityIds = body.EntityIds?.Count > 0
                 ? body.EntityIds
                 : Array.Empty<string>();
@@ -155,12 +161,12 @@ public sealed class RecommendationsController(
             var result = await analysisClient.SubmitFeedbackAsync(
                 new FeedbackRequestPayload(
                     id,
-                    body.PatternKey,
+                    patternKey,
                     verdict,
-                    body.Cadence ?? "irregular",
-                    body.SupportCount,
-                    body.Confidence,
-                    body.FrequencyScore,
+                    string.IsNullOrWhiteSpace(body.Cadence) ? "irregular" : body.Cadence.Trim(),
+                    body.SupportCount ?? 0,
+                    body.Confidence ?? 0,
+                    body.FrequencyScore ?? 0,
                     entityIds),
                 cancellationToken);
 
@@ -183,9 +189,9 @@ public sealed record RecommendationFeedbackRequest(
     string Verdict,
     string PatternKey,
     string? Cadence,
-    int SupportCount,
-    double Confidence,
-    double FrequencyScore,
+    int? SupportCount,
+    double? Confidence,
+    double? FrequencyScore,
     IReadOnlyList<string>? EntityIds);
 
 public sealed record RecommendationsStatusResponse(

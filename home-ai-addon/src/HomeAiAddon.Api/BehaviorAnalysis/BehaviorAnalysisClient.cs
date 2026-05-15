@@ -79,7 +79,8 @@ public sealed class BehaviorAnalysisClient(
                 "ML feedback failed: {StatusCode} {Body}",
                 (int)response.StatusCode,
                 body);
-            response.EnsureSuccessStatusCode();
+            throw new HttpRequestException(
+                $"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}). Body: {body}");
         }
 
         var payload = await response.Content.ReadFromJsonAsync<FeedbackResponsePayload>(
