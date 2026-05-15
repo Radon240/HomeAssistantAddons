@@ -1,11 +1,20 @@
 #!/bin/sh
 set -e
 
+PYTHON="/venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+  PYTHON="/venv/bin/python3"
+fi
+if [ ! -x "$PYTHON" ]; then
+  echo "Python not found in /venv. Rebuild the add-on image."
+  exit 1
+fi
+
 ML_LOG="${ML_LOG_PATH:-/data/logs/ml-service.log}"
 mkdir -p "$(dirname "$ML_LOG")"
 
-echo "Starting behavior analysis ML service..."
-/venv/bin/python -m uvicorn app.main:app \
+echo "Starting behavior analysis ML service ($PYTHON)..."
+"$PYTHON" -m uvicorn app.main:app \
   --host 127.0.0.1 \
   --port 8100 \
   --workers 1 \
@@ -17,7 +26,7 @@ echo "Waiting for ML service on :8100 (pid $ML_PID)..."
 READY=0
 i=0
 while [ "$i" -lt 45 ]; do
-  if /venv/bin/python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=1)" >/dev/null 2>&1; then
+  if "$PYTHON" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=1)" >/dev/null 2>&1; then
     READY=1
     break
   fi
