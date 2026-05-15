@@ -69,4 +69,31 @@ public static class EntityPatternMatcher
         var dot = entityId.IndexOf('.');
         return dot > 0 ? entityId[..dot] : entityId;
     }
+
+    /// <summary>Исключение из анализа: совпадение с любым шаблоном entity или domain.</summary>
+    public static bool IsExcludedFromAnalysis(
+        string entityId,
+        IReadOnlyList<string> excludeEntityPatterns,
+        IReadOnlyList<string> excludeDomainPatterns)
+    {
+        if (string.IsNullOrWhiteSpace(entityId))
+        {
+            return true;
+        }
+
+        if (excludeEntityPatterns.Count > 0
+            && excludeEntityPatterns.Any(p => MatchesEntityFilter(entityId, p)))
+        {
+            return true;
+        }
+
+        if (excludeDomainPatterns.Count == 0)
+        {
+            return false;
+        }
+
+        var domain = ExtractDomain(entityId);
+        return excludeDomainPatterns.Any(p =>
+            MatchesEntityFilter(entityId, p) || Matches(domain, p) || MatchesEntityFilter(domain, p));
+    }
 }

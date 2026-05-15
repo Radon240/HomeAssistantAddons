@@ -43,9 +43,28 @@ export function RecommendationsPage() {
         </div>
         {data ? (
           <p className="muted" style={{ marginBottom: 0, marginTop: 12 }}>
-            Событий: {data.analyzedEventCount} · Сессий: {data.sessionCount} · Кандидатов:{" "}
+            В модель: {data.analyzedEventCount} событий (просмотрено {data.scannedEventCount},
+            исключено {data.excludedEventCount}) · Сессий: {data.sessionCount} · Кандидатов:{" "}
             {data.patternCandidates}
           </p>
+        ) : null}
+        {data &&
+        (data.analysisExcludeEntities.length > 0 || data.analysisExcludeDomains.length > 0) ? (
+          <details style={{ marginTop: 10 }}>
+            <summary className="muted">Исключения из анализа (add-on config)</summary>
+            <ul className="mono" style={{ fontSize: 12, margin: "8px 0 0", paddingLeft: 18 }}>
+              {data.analysisExcludeEntities.map((item) => (
+                <li key={`e-${item}`}>entity: {item}</li>
+              ))}
+              {data.analysisExcludeDomains.map((item) => (
+                <li key={`d-${item}`}>domain: {item}</li>
+              ))}
+            </ul>
+            <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
+              События по-прежнему сохраняются в SQLite и видны на вкладке «События». Изменения — в
+              настройках Home AI Addon в Supervisor.
+            </p>
+          </details>
         ) : null}
       </section>
 

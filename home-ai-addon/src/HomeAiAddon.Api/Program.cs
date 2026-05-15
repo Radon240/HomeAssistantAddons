@@ -78,6 +78,7 @@ try
     });
 
     builder.Services.AddHostedService<BehaviorAnalysisHostedService>();
+    builder.Services.AddSingleton<AnalysisEntityFilter>();
 
     builder.Services.AddSingleton<HomeAssistantConnectionState>();
     builder.Services.AddSingleton<RuntimeMetrics>();

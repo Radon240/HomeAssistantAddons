@@ -18,4 +18,12 @@ public sealed class AddonOptions
     /// <summary>Фильтр по domain (напр. light, sensor, light.*).</summary>
     [ConfigurationKeyName("domain_filter")]
     public List<string> DomainFilter { get; set; } = [];
+
+    /// <summary>Исключить entity из ML-анализа (sensor.*, device_tracker.phone).</summary>
+    [ConfigurationKeyName("analysis_exclude_entities")]
+    public List<string> AnalysisExcludeEntities { get; set; } = [];
+
+    /// <summary>Исключить domain из ML-анализа (sensor, sun, weather).</summary>
+    [ConfigurationKeyName("analysis_exclude_domains")]
+    public List<string> AnalysisExcludeDomains { get; set; } = [];
 }

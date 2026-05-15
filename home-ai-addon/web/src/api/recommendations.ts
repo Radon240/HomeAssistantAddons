@@ -34,8 +34,19 @@ export interface RecommendationsResponse {
   analyzedEventCount: number;
   sessionCount: number;
   patternCandidates: number;
+  scannedEventCount: number;
+  excludedEventCount: number;
   recommendations: Recommendation[];
   message: string | null;
+  analysisExcludeEntities: string[];
+  analysisExcludeDomains: string[];
+}
+
+export interface AnalysisFiltersResponse {
+  excludeEntities: string[];
+  excludeDomains: string[];
+  hasExclusions: boolean;
+  hint: string;
 }
 
 export function fetchRecommendations(): Promise<RecommendationsResponse> {

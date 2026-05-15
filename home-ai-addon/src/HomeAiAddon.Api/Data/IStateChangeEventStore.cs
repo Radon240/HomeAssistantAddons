@@ -15,10 +15,16 @@ public interface IStateChangeEventStore
         int hours,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<StateChangeEventDto>> GetRecentForAnalysisAsync(
+    Task<AnalysisEventBatch> GetRecentForAnalysisAsync(
         int limit,
+        Func<string, bool> includeEntity,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record AnalysisEventBatch(
+    IReadOnlyList<StateChangeEventDto> Events,
+    int ScannedCount,
+    int ExcludedCount);
 
 public sealed record StateChangeEventDto(
     long Id,

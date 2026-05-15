@@ -11,9 +11,21 @@ namespace HomeAiAddon.Api.Controllers;
 public sealed class RecommendationsController(
     IStateChangeEventStore store,
     IBehaviorAnalysisClient analysisClient,
+    AnalysisEntityFilter analysisEntityFilter,
     IOptions<BehaviorAnalysisOptions> options,
     ILogger<RecommendationsController> logger) : ControllerBase
 {
+    [HttpGet("filters")]
+    public ActionResult<AnalysisFiltersResponse> GetFilters()
+    {
+        var settings = analysisEntityFilter.GetSettings();
+        return Ok(new AnalysisFiltersResponse(
+            settings.ExcludeEntities,
+            settings.ExcludeDomains,
+            settings.HasExclusions,
+            "Настройте analysis_exclude_entities и analysis_exclude_domains в конфигурации add-on."));
+    }
+
     [HttpGet("status")]
     public async Task<ActionResult<RecommendationsStatusResponse>> GetStatus(
         CancellationToken cancellationToken = default)
@@ -40,21 +52,37 @@ public sealed class RecommendationsController(
             }
 
             var opts = options.Value;
-            var events = await store.GetRecentForAnalysisAsync(opts.EventLimit, cancellationToken);
-            if (events.Count == 0)
+            var batch = await store.GetRecentForAnalysisAsync(
+                opts.EventLimit,
+                analysisEntityFilter.ShouldInclude,
+                cancellationToken);
+
+            if (batch.Events.Count == 0)
             {
+                var filterSettings = analysisEntityFilter.GetSettings();
+                var hint = filterSettings.HasExclusions
+                    ? " После исключений по analysis_exclude_* не осталось событий — ослабьте фильтры."
+                    : " Дождитесь накопления данных из Home Assistant.";
                 return Ok(new RecommendationsResponse(
                     0,
                     0,
                     0,
+                    batch.ScannedCount,
+                    batch.ExcludedCount,
                     Array.Empty<RecommendationPayload>(),
-                    "Недостаточно событий для анализа. Дождитесь накопления данных из Home Assistant."));
+                    "Недостаточно событий для анализа." + hint,
+                    filterSettings.ExcludeEntities,
+                    filterSettings.ExcludeDomains));
             }
 
-            logger.LogInformation("Sending {EventCount} events to ML service", events.Count);
+            logger.LogInformation(
+                "Sending {EventCount} events to ML service (scanned {Scanned}, excluded {Excluded})",
+                batch.Events.Count,
+                batch.ScannedCount,
+                batch.ExcludedCount);
 
             var request = new AnalyzeRequestPayload(
-                events.Select(e => new AnalyzeEventPayload(
+                batch.Events.Select(e => new AnalyzeEventPayload(
                     e.Id,
                     e.EntityId,
                     e.OldState,
@@ -72,12 +100,17 @@ public sealed class RecommendationsController(
                     opts.LookbackHours));
 
             var result = await analysisClient.AnalyzeAsync(request, cancellationToken);
+            var filters = analysisEntityFilter.GetSettings();
             return Ok(new RecommendationsResponse(
                 result.AnalyzedEventCount,
                 result.SessionCount,
                 result.PatternCandidates,
+                batch.ScannedCount,
+                batch.ExcludedCount,
                 result.Recommendations,
-                null));
+                null,
+                filters.ExcludeEntities,
+                filters.ExcludeDomains));
         }
         catch (HttpRequestException ex)
         {
@@ -106,9 +139,19 @@ public sealed record RecommendationsStatusResponse(
     string MlBaseUrl,
     string Message);
 
+public sealed record AnalysisFiltersResponse(
+    IReadOnlyList<string> ExcludeEntities,
+    IReadOnlyList<string> ExcludeDomains,
+    bool HasExclusions,
+    string Hint);
+
 public sealed record RecommendationsResponse(
     int AnalyzedEventCount,
     int SessionCount,
     int PatternCandidates,
+    int ScannedEventCount,
+    int ExcludedEventCount,
     IReadOnlyList<RecommendationPayload> Recommendations,
-    string? Message);
+    string? Message,
+    IReadOnlyList<string> AnalysisExcludeEntities,
+    IReadOnlyList<string> AnalysisExcludeDomains);

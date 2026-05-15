@@ -22,6 +22,8 @@ options:
   home_assistant_base_url: ""
   entity_filter: []
   domain_filter: []
+  analysis_exclude_entities: []
+  analysis_exclude_domains: []
 schema:
   display_name: str?
   enable_verbose_api: bool?
@@ -29,5 +31,9 @@ schema:
   entity_filter:
     - str
   domain_filter:
+    - str
+  analysis_exclude_entities:
+    - str
+  analysis_exclude_domains:
     - str
 watchdog: "http://[HOST]:[PORT:8099]/health"

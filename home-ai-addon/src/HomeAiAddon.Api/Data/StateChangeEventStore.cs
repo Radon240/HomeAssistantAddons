@@ -51,23 +51,44 @@ public sealed class StateChangeEventStore(ApplicationDbContext db) : IStateChang
             .ToList();
     }
 
-    public async Task<IReadOnlyList<StateChangeEventDto>> GetRecentForAnalysisAsync(
+    public async Task<AnalysisEventBatch> GetRecentForAnalysisAsync(
         int limit,
+        Func<string, bool> includeEntity,
         CancellationToken cancellationToken = default)
     {
         limit = Math.Clamp(limit, 100, 10000);
+        var scanLimit = Math.Clamp(limit * 4, limit, 15000);
 
         var rows = await db.StateChangeEvents
             .AsNoTracking()
             .OrderByDescending(e => e.Id)
-            .Take(limit)
+            .Take(scanLimit)
             .ToListAsync(cancellationToken);
 
-        return rows
+        var excluded = 0;
+        var included = new List<StateChangeEventRecord>(limit);
+        foreach (var row in rows)
+        {
+            if (!includeEntity(row.EntityId))
+            {
+                excluded++;
+                continue;
+            }
+
+            included.Add(row);
+            if (included.Count >= limit)
+            {
+                break;
+            }
+        }
+
+        var events = included
             .OrderBy(e => e.TimeFiredUtc)
             .ThenBy(e => e.Id)
             .Select(Map)
             .ToList();
+
+        return new AnalysisEventBatch(events, rows.Count, excluded);
     }
 
     public async Task<IReadOnlyList<HourlyEventBucket>> GetHourlyStatsAsync(
