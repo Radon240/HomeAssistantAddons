@@ -36,7 +36,8 @@ export function RecommendationsPage() {
           <div>
             <h2 style={{ marginTop: 0 }}>Рекомендации</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Повторяющиеся сценарии с расписанием: каждый час, ежедневно, еженедельно и др.
+              Повторяющиеся сценарии с учётом последовательности, времени, lift и объяснимой
+              уверенностью.
             </p>
           </div>
           <button type="button" onClick={() => void load()} disabled={loading}>

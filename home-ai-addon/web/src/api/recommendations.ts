@@ -14,6 +14,14 @@ export interface SuggestedAutomation {
   actionToStates: (string | null)[];
 }
 
+export interface ExplanationFactor {
+  key: string;
+  label: string;
+  value: string;
+  weight: number;
+  score: number;
+}
+
 export interface Recommendation {
   id: string;
   patternKey: string;
@@ -24,12 +32,18 @@ export interface Recommendation {
   baseConfidence: number;
   feedbackScore: number;
   frequencyScore: number;
+  lift: number;
+  supportRatio: number;
   cadence: string;
   cadenceConfidence: number;
   cadenceLabel: string;
   scheduleHint: string;
   title: string;
   description: string;
+  whyGenerated: string;
+  explanationFactors: ExplanationFactor[];
+  medianStepGapsSeconds: number[];
+  weekdayHint: string | null;
   suggestedAutomation: SuggestedAutomation;
 }
 

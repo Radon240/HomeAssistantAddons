@@ -11,6 +11,7 @@ from app.models import (
     SuggestedAutomation,
 )
 from app.pattern_miner import PatternCandidate, mine_patterns
+from app.pattern_scoring import passes_quality_gates, score_pattern
 from app.river_tracker import OnlinePatternTracker
 from app.sequence_builder import build_sessions
 from app.feedback_learner import FeedbackContext, extract_domains
@@ -33,6 +34,7 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
         sessions,
         min_support=options.min_support,
         max_sequence_length=options.max_sequence_length,
+        max_step_gap_seconds=options.max_step_gap_seconds,
         tracker=tracker,
     )
 
@@ -41,8 +43,6 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
 
     recommendations: list[Recommendation] = []
     for candidate in candidates:
-        if candidate.confidence < options.min_confidence:
-            continue
         recommendation = _to_recommendation(
             candidate,
             session_count=len(sessions),
@@ -55,7 +55,8 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
     recommendations.sort(
         key=lambda item: (
             item.cadence != CADENCE_IRREGULAR,
-            item.feedback_score * (item.cadence_confidence * 0.4 + item.confidence * 0.6),
+            item.lift,
+            item.feedback_score * item.confidence,
             item.support_count,
         ),
         reverse=True,
@@ -77,7 +78,7 @@ def _to_recommendation(
     options: AnalyzeOptions,
     learner,
 ) -> Recommendation | None:
-    if len(candidate.tokens) < 2:
+    if len(candidate.entity_keys) < 2:
         return None
 
     cadence_result = detect_cadence(list(candidate.occurrence_times))
@@ -87,6 +88,10 @@ def _to_recommendation(
         cadence_result.cadence != CADENCE_IRREGULAR
         and cadence_result.confidence < options.min_cadence_confidence
     ):
+        return None
+
+    scored = score_pattern(candidate, cadence_result, session_count, options)
+    if not passes_quality_gates(candidate, scored, options):
         return None
 
     steps = [
@@ -112,23 +117,24 @@ def _to_recommendation(
     schedule_part = (
         cadence_result.schedule_hint
         if cadence_result.cadence != CADENCE_IRREGULAR
-        else "без устойчивого часового/дневного/недельного ритма"
+        else candidate.weekday_hint or "без устойчивого расписания"
     )
+    gap_part = ""
+    if candidate.median_step_gaps:
+        gap_part = (
+            " Интервалы: "
+            + ", ".join(f"{int(g)}с" for g in candidate.median_step_gaps)
+            + "."
+        )
+
     description = (
         f"Сценарий из {len(steps)} шагов повторился {candidate.support_count} раз(а). "
         f"Расписание: {schedule_part}. "
-        f"Уверенность сценария: {int(candidate.confidence * 100)}%, "
-        f"уверенность расписания: {int(cadence_result.confidence * 100)}%."
+        f"Уверенность: {int(scored.base_confidence * 100)}%, lift: {candidate.lift:.1f}."
+        f"{gap_part}"
     )
 
-    combined_confidence = round(
-        candidate.confidence * 0.6 + cadence_result.confidence * 0.4
-        if cadence_result.cadence != CADENCE_IRREGULAR
-        else candidate.confidence * 0.85,
-        4,
-    )
-
-    pattern_key = "|".join(candidate.labels)
+    pattern_key = "|".join(candidate.entity_keys)
     pattern_id = hashlib.sha1(pattern_key.encode("utf-8")).hexdigest()[:12]
     entity_ids = [token.entity_id for token in candidate.tokens]
 
@@ -137,7 +143,7 @@ def _to_recommendation(
         recommendation_id=f"rec-{pattern_id}",
         cadence=cadence_result.cadence,
         support_count=candidate.support_count,
-        confidence=combined_confidence,
+        confidence=scored.base_confidence,
         frequency_score=candidate.frequency_score,
         entity_ids=tuple(entity_ids),
         domains=extract_domains(entity_ids),
@@ -147,7 +153,7 @@ def _to_recommendation(
         return None
 
     adjusted_confidence = round(
-        min(0.99, combined_confidence * adjustment.final_multiplier),
+        min(0.99, scored.base_confidence * adjustment.final_multiplier),
         4,
     )
 
@@ -158,15 +164,21 @@ def _to_recommendation(
         support_count=candidate.support_count,
         session_count=session_count,
         confidence=adjusted_confidence,
-        base_confidence=combined_confidence,
+        base_confidence=scored.base_confidence,
         feedback_score=round(adjustment.final_multiplier, 4),
         frequency_score=candidate.frequency_score,
+        lift=candidate.lift,
+        support_ratio=scored.support_ratio,
         cadence=cadence_result.cadence,
         cadence_confidence=cadence_result.confidence,
         cadence_label=cadence_label,
         schedule_hint=cadence_result.schedule_hint,
         title=title,
         description=description,
+        why_generated=scored.why_generated,
+        explanation_factors=list(scored.explanation_factors),
+        median_step_gaps_seconds=list(candidate.median_step_gaps),
+        weekday_hint=candidate.weekday_hint,
         suggested_automation=SuggestedAutomation(
             trigger_entity_id=trigger.entity_id,
             trigger_to_state=trigger.new_state,

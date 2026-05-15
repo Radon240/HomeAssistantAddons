@@ -23,6 +23,8 @@ WEEKDAY_NAMES_RU = (
     "воскресеньям",
 )
 
+WEEKDAY_SHORT_RU = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+
 
 @dataclass(frozen=True)
 class CadenceResult:
@@ -216,6 +218,36 @@ def _normalize(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def weekday_concentration(occurrence_times: list[datetime]) -> tuple[float, str | None]:
+    """Return (concentration 0..1, hint) for dominant weekday or weekday/workday split."""
+    if len(occurrence_times) < 2:
+        return 0.0, None
+
+    weekdays = [_normalize(t).weekday() for t in occurrence_times]
+    total = len(weekdays)
+    counts: dict[int, int] = {}
+    for day in weekdays:
+        counts[day] = counts.get(day, 0) + 1
+
+    best_day, best_count = max(counts.items(), key=lambda item: item[1])
+    concentration = best_count / total
+
+    weekdays_only = sum(1 for day in weekdays if day < 5)
+    weekend_only = total - weekdays_only
+    workday_ratio = weekdays_only / total
+
+    if workday_ratio >= 0.75 and concentration < 0.55:
+        return round(workday_ratio, 4), "чаще по будням"
+
+    if workday_ratio <= 0.25:
+        return round(1.0 - workday_ratio, 4), "чаще по выходным"
+
+    if concentration >= 0.45:
+        return round(concentration, 4), f"чаще по {WEEKDAY_NAMES_RU[best_day]}"
+
+    return round(concentration, 4), None
 
 
 def cadence_label_ru(cadence: str) -> str:

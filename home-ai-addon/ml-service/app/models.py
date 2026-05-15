@@ -25,10 +25,27 @@ class AnalyzeOptions(BaseModel):
     min_cadence_confidence: float = Field(
         default=0.4, ge=0.0, le=1.0, alias="minCadenceConfidence"
     )
+    min_lift: float = Field(default=1.2, ge=1.0, le=10.0, alias="minLift")
+    min_support_ratio: float = Field(
+        default=0.03, ge=0.0, le=1.0, alias="minSupportRatio"
+    )
     require_periodic: bool = Field(default=False, alias="requirePeriodic")
     max_gap_seconds: int = Field(default=300, ge=30, le=3600, alias="maxGapSeconds")
+    max_step_gap_seconds: int = Field(
+        default=180, ge=5, le=3600, alias="maxStepGapSeconds"
+    )
     max_sequence_length: int = Field(default=4, ge=2, le=8, alias="maxSequenceLength")
     lookback_hours: int = Field(default=336, ge=24, le=2160, alias="lookbackHours")
+
+    model_config = {"populate_by_name": True}
+
+
+class ExplanationFactor(BaseModel):
+    key: str
+    label: str
+    value: str
+    weight: float
+    score: float
 
     model_config = {"populate_by_name": True}
 
@@ -130,12 +147,22 @@ class Recommendation(BaseModel):
     base_confidence: float = Field(alias="baseConfidence")
     feedback_score: float = Field(default=1.0, alias="feedbackScore")
     frequency_score: float = Field(alias="frequencyScore")
+    lift: float = 1.0
+    support_ratio: float = Field(default=0.0, alias="supportRatio")
     cadence: str
     cadence_confidence: float = Field(alias="cadenceConfidence")
     cadence_label: str = Field(alias="cadenceLabel")
     schedule_hint: str = Field(alias="scheduleHint")
     title: str
     description: str
+    why_generated: str = Field(default="", alias="whyGenerated")
+    explanation_factors: list[ExplanationFactor] = Field(
+        default_factory=list, alias="explanationFactors"
+    )
+    median_step_gaps_seconds: list[float] = Field(
+        default_factory=list, alias="medianStepGapsSeconds"
+    )
+    weekday_hint: str | None = Field(default=None, alias="weekdayHint")
     suggested_automation: SuggestedAutomation = Field(alias="suggestedAutomation")
 
     model_config = {"populate_by_name": True}

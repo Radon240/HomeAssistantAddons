@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   submitRecommendationFeedback,
+  type ExplanationFactor,
   type FeedbackVerdict,
   type Recommendation
 } from "../api/recommendations";
@@ -13,8 +14,8 @@ interface RecommendationCardProps {
 function buildFeedbackPayload(item: Recommendation) {
   const patternKey =
     item.patternKey?.trim() ||
-    item.sequence.map((step) => step.label).join("|") ||
-    item.sequence.map((step) => step.entityId).join("|");
+    item.sequence.map((step) => step.entityId).join("|") ||
+    item.sequence.map((step) => step.label).join("|");
 
   return {
     patternKey,
@@ -26,6 +27,37 @@ function buildFeedbackPayload(item: Recommendation) {
   };
 }
 
+function ExplanationFactorRow({ factor }: { factor: ExplanationFactor }) {
+  const percent = Math.round(factor.score * 100);
+  return (
+    <li>
+      <div className="explanation-factor">
+        <motionFactorText factor={factor} percent={percent} />
+        <div className="confidence-bar-wrap" style={{ height: 6, marginTop: 4 }}>
+          <div className="confidence-bar" style={{ width: `${percent}%` }} />
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function motionFactorText({ factor, percent }: { factor: ExplanationFactor; percent: number }) {
+  return (
+    <motionFactorTextInner factor={factor} percent={percent} />
+  );
+}
+
+function motionFactorTextInner({ factor, percent }: { factor: ExplanationFactor; percent: number }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
+      <span>
+        <strong>{factor.label}:</strong> {factor.value}
+      </span>
+      <span className="muted">{percent}%</span>
+    </div>
+  );
+}
+
 export function RecommendationCard({ item, onFeedback }: RecommendationCardProps) {
   const [submitting, setSubmitting] = useState(false);
   const [verdict, setVerdict] = useState<FeedbackVerdict | null>(null);
@@ -35,6 +67,8 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
   const cadencePercent = Math.round(item.cadenceConfidence * 100);
   const feedbackScore = typeof item.feedbackScore === "number" ? item.feedbackScore : 1;
   const learned = Math.abs(feedbackScore - 1) > 0.02;
+  const lift = typeof item.lift === "number" ? item.lift : 0;
+  const factors = item.explanationFactors ?? [];
 
   async function sendFeedback(next: FeedbackVerdict) {
     if (submitting || verdict) {
@@ -69,26 +103,53 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
           <span className="muted" style={{ fontSize: 12 }}>
             {item.scheduleHint} · расписание {cadencePercent}%
           </span>
+        ) : item.weekdayHint ? (
+          <span className="muted" style={{ fontSize: 12 }}>
+            {item.weekdayHint}
+          </span>
         ) : (
           <span className="muted" style={{ fontSize: 12 }}>
             {item.scheduleHint || "Без устойчивого расписания"}
           </span>
         )}
+        {lift >= 1.2 ? (
+          <span className="muted" style={{ fontSize: 12 }}>
+            · lift {lift.toFixed(1)}×
+          </span>
+        ) : null}
       </div>
+      {item.whyGenerated ? (
+        <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>
+          <strong style={{ fontWeight: 600 }}>Почему предложено:</strong> {item.whyGenerated}
+        </p>
+      ) : null}
       <p className="muted" style={{ margin: "8px 0" }}>
         {item.description}
       </p>
       <div className="confidence-bar-wrap" aria-label={`Уверенность ${confidencePercent}%`}>
-        <div className="confidence-bar" style={{ width: `${confidencePercent}%` }} />
+        <motionConfidenceBar percent={confidencePercent} />
       </div>
       {learned ? (
         <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
           Ранг скорректирован обучением на отзывах (×{feedbackScore.toFixed(2)})
         </p>
       ) : null}
+      {factors.length > 0 ? (
+        <details style={{ marginTop: 12 }} open>
+          <summary className="muted">Факторы уверенности</summary>
+          <ul className="explanation-factors">
+            {factors.map((factor) => (
+              <ExplanationFactorRow key={factor.key} factor={factor} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
       <div className="mono" style={{ fontSize: 12, marginTop: 10 }}>
         Поддержка: {item.supportCount} · Сессий: {item.sessionCount} · Частота:{" "}
         {Math.round(item.frequencyScore * 100)}%
+        {item.medianStepGapsSeconds?.length
+          ? ` · паузы: ${item.medianStepGapsSeconds.map((g) => `${Math.round(g)}с`).join(", ")}`
+          : ""}
       </div>
       <ol className="sequence-steps">
         {item.sequence.map((step, index) => (
@@ -139,4 +200,8 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
       ) : null}
     </article>
   );
+}
+
+function motionConfidenceBar({ percent }: { percent: number }) {
+  return <div className="confidence-bar" style={{ width: `${percent}%` }} />;
 }

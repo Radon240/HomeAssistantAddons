@@ -35,4 +35,10 @@ public sealed class BehaviorAnalysisOptions
 
     /// <summary>Hide patterns marked «not useful» for this many days.</summary>
     public int FeedbackDismissDays { get; set; } = 14;
+
+    public double MinLift { get; set; } = 1.2;
+
+    public double MinSupportRatio { get; set; } = 0.03;
+
+    public int MaxStepGapSeconds { get; set; } = 180;
 }

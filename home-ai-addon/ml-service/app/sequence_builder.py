@@ -17,6 +17,7 @@ class ActionToken:
     new_state: str | None
     friendly_name: str | None
     label: str
+    entity_key: str
     occurred_at: datetime
 
 
@@ -36,11 +37,13 @@ def tokenize_event(event: EventInput) -> ActionToken | None:
     state = event.new_state or "unknown"
     name = event.friendly_name or event.entity_id.split(".", 1)[-1]
     label = f"{name} → {state}"
+    entity_key = f"{event.entity_id}#{state}"
     return ActionToken(
         entity_id=event.entity_id,
         new_state=event.new_state,
         friendly_name=event.friendly_name,
         label=label,
+        entity_key=entity_key,
         occurred_at=_normalize_dt(event.time_fired_utc),
     )
 

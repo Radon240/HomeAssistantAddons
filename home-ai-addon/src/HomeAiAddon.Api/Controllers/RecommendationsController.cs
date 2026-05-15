@@ -88,7 +88,10 @@ public sealed class RecommendationsController(
                     opts.MaxGapSeconds,
                     opts.MaxSequenceLength,
                     opts.LookbackHours,
-                    opts.FeedbackDismissDays));
+                    opts.FeedbackDismissDays,
+                    opts.MinLift,
+                    opts.MinSupportRatio,
+                    opts.MaxStepGapSeconds));
 
             var result = await analysisClient.AnalyzeAsync(request, cancellationToken);
             return Ok(new RecommendationsResponse(

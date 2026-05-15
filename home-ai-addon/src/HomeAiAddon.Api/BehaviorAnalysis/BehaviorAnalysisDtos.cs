@@ -21,7 +21,17 @@ public sealed record AnalyzeOptionsPayload(
     int MaxGapSeconds,
     int MaxSequenceLength,
     int LookbackHours,
-    int FeedbackDismissDays = 14);
+    int FeedbackDismissDays = 14,
+    double MinLift = 1.2,
+    double MinSupportRatio = 0.03,
+    int MaxStepGapSeconds = 180);
+
+public sealed record ExplanationFactorPayload(
+    string Key,
+    string Label,
+    string Value,
+    double Weight,
+    double Score);
 
 public sealed record AnalyzeResponsePayload(
     int AnalyzedEventCount,
@@ -41,12 +51,18 @@ public sealed record RecommendationPayload(
     double BaseConfidence,
     double FeedbackScore,
     double FrequencyScore,
+    double Lift,
+    double SupportRatio,
     string Cadence,
     double CadenceConfidence,
     string CadenceLabel,
     string ScheduleHint,
     string Title,
     string Description,
+    string WhyGenerated,
+    IReadOnlyList<ExplanationFactorPayload> ExplanationFactors,
+    IReadOnlyList<double> MedianStepGapsSeconds,
+    string? WeekdayHint,
     SuggestedAutomationPayload SuggestedAutomation);
 
 public sealed record FeedbackRequestPayload(

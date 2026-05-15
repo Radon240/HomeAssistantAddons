@@ -358,3 +358,18 @@ button:disabled {
 .anomaly-score-bar.severity-bar-high {
   background: linear-gradient(90deg, #c44, #ff8a8a);
 }
+
+.explanation-factors {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.explanation-factor {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.12);
+}
