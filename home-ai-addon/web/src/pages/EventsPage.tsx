@@ -52,7 +52,7 @@ export function EventsPage() {
       <section className="card" style={{ display: "grid", gap: 12 }}>
         <h2 style={{ margin: 0 }}>События</h2>
         <p className="muted" style={{ margin: 0 }}>
-          История из SQLite + обновление каждые 3 с. Фильтр по entity_id.
+          История из SQLite + обновление каждые 3 с. Фильтр: точный id, шаблон (light.*) или domain (light).
         </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <label style={{ display: "grid", gap: 4, flex: "1 1 220px" }}>

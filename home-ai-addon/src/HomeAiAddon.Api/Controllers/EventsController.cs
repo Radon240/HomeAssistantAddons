@@ -7,6 +7,7 @@ namespace HomeAiAddon.Api.Controllers;
 [Route("api/[controller]")]
 public sealed class EventsController(IStateChangeEventStore store) : ControllerBase
 {
+    /// <param name="entity">entity_id, шаблон (light.*) или domain (light).</param>
     [HttpGet]
     public async Task<ActionResult<EventsListResponse>> Get(
         [FromQuery] int limit = 100,

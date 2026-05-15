@@ -29,20 +29,26 @@ public sealed class StateChangeEventStore(ApplicationDbContext db) : IStateChang
         CancellationToken cancellationToken = default)
     {
         limit = Math.Clamp(limit, 1, 500);
+        const int scanLimit = 5000;
 
-        var query = db.StateChangeEvents.AsNoTracking();
-        if (!string.IsNullOrWhiteSpace(entityId))
-        {
-            query = query.Where(e => e.EntityId == entityId);
-        }
-
-        // SQLite (EF) не поддерживает ORDER BY по DateTimeOffset — сортируем по Id (монотонный).
-        var rows = await query
+        // SQLite: без LIKE по шаблонам — берём последние записи и фильтруем в памяти (поддержка * и domain).
+        var rows = await db.StateChangeEvents
+            .AsNoTracking()
             .OrderByDescending(e => e.Id)
-            .Take(limit)
+            .Take(scanLimit)
             .ToListAsync(cancellationToken);
 
-        return rows.Select(Map).ToList();
+        if (!string.IsNullOrWhiteSpace(entityId))
+        {
+            rows = rows
+                .Where(e => EntityPatternMatcher.MatchesEntityFilter(e.EntityId, entityId))
+                .ToList();
+        }
+
+        return rows
+            .Take(limit)
+            .Select(Map)
+            .ToList();
     }
 
     public async Task<IReadOnlyList<HourlyEventBucket>> GetHourlyStatsAsync(
