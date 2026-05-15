@@ -1,5 +1,5 @@
 name: "Home AI Addon"
-version: "0.1.4"
+version: "0.2.0"
 slug: home_ai_addon
 description: "Home AI Addon: ASP.NET Core 9, React (Vite), SQLite, Ingress."
 url: "https://github.com/example/HomeAssistantAddons"
@@ -13,18 +13,21 @@ panel_title: "Home AI"
 arch:
   - aarch64
   - amd64
-# Доступ к Core API через прокси Supervisor (SUPERVISOR_TOKEN подставляется автоматически).
-# См. https://developers.home-assistant.io/docs/add-ons/communication
 homeassistant_api: true
-map: []
+map:
+  - data
 options:
   display_name: "Home AI Addon"
   enable_verbose_api: false
-  # Оставьте пустым в аддоне HA (используется прокси Supervisor автоматически).
-  # Заполняйте только для локальной отладки с HOME_ASSISTANT_ACCESS_TOKEN, напр. http://127.0.0.1:8123
   home_assistant_base_url: ""
+  entity_filter: []
+  domain_filter: []
 schema:
   display_name: str?
   enable_verbose_api: bool?
   home_assistant_base_url: str?
+  entity_filter:
+    - str
+  domain_filter:
+    - str
 watchdog: "http://[HOST]:[PORT:8099]/health"
