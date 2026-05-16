@@ -34,6 +34,14 @@ class CadenceResult:
     interval_hours: float | None
 
 
+@dataclass(frozen=True)
+class TemporalProfile:
+    score: float
+    hint: str | None
+    time_bucket_score: float
+    weekday_weekend_score: float
+
+
 def detect_cadence(occurrence_times: list[datetime]) -> CadenceResult:
     if len(occurrence_times) < 3:
         return CadenceResult(
@@ -248,6 +256,54 @@ def weekday_concentration(occurrence_times: list[datetime]) -> tuple[float, str 
         return round(concentration, 4), f"чаще по {WEEKDAY_NAMES_RU[best_day]}"
 
     return round(concentration, 4), None
+
+
+def temporal_profile(occurrence_times: list[datetime]) -> TemporalProfile:
+    if len(occurrence_times) < 2:
+        return TemporalProfile(0.0, None, 0.0, 0.0)
+
+    times = [_normalize(t) for t in occurrence_times]
+    time_score, time_hint = _time_bucket_concentration(times)
+    weekday_score, weekday_hint = weekday_concentration(times)
+
+    score = round(0.6 * time_score + 0.4 * weekday_score, 4)
+    hints = [item for item in (time_hint, weekday_hint) if item]
+    return TemporalProfile(
+        score=score,
+        hint="; ".join(hints) if hints else None,
+        time_bucket_score=time_score,
+        weekday_weekend_score=weekday_score,
+    )
+
+
+def _time_bucket_concentration(times: list[datetime]) -> tuple[float, str | None]:
+    buckets: dict[int, int] = {}
+    for ts in times:
+        bucket = ts.hour * 2 + (1 if ts.minute >= 30 else 0)
+        buckets[bucket] = buckets.get(bucket, 0) + 1
+
+    best_bucket, best_count = max(buckets.items(), key=lambda item: item[1])
+    concentration = best_count / len(times)
+    if concentration < 0.45:
+        return round(concentration, 4), None
+
+    hour = best_bucket // 2
+    minute = 30 if best_bucket % 2 else 0
+    period = _day_period_label(hour)
+    return (
+        round(concentration, 4),
+        f"часто {period} около {hour:02d}:{minute:02d} UTC",
+    )
+
+
+def _day_period_label(hour: int) -> str:
+    if 5 <= hour < 12:
+        return "утром"
+    if 12 <= hour < 17:
+        return "днём"
+    if 17 <= hour < 23:
+        return "вечером"
+    return "ночью"
 
 
 def cadence_label_ru(cadence: str) -> str:

@@ -11,7 +11,7 @@ from sklearn.preprocessing import minmax_scale
 from app.device_semantics import is_meaningful_automation
 from app.river_tracker import OnlinePatternTracker
 from app.sequence_builder import ActionToken
-from app.temporal_analysis import weekday_concentration
+from app.temporal_analysis import temporal_profile
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,9 @@ class PatternCandidate:
     median_step_gaps: tuple[float, ...] = field(default_factory=tuple)
     weekday_concentration: float = 0.0
     weekday_hint: str | None = None
+    temporal_score: float = 0.0
+    temporal_hint: str | None = None
+    time_bucket_score: float = 0.0
 
 
 def _step_gaps(tokens: tuple[ActionToken, ...]) -> tuple[float, ...]:
@@ -246,7 +249,7 @@ def mine_patterns(
         times = tuple(item.started_at for item in occ_list)
         gap_lists = [item.step_gaps_seconds for item in occ_list if item.step_gaps_seconds]
         median_gaps = _median_gaps(gap_lists)
-        weekday_score, weekday_hint = weekday_concentration(list(times))
+        temporal = temporal_profile(list(times))
         semantic_ok, semantic_reason = is_meaningful_automation(
             [token.semantics for token in row["tokens"]]
         )
@@ -281,8 +284,11 @@ def mine_patterns(
                 area_hint=area_hint,
                 occurrence_times=times,
                 median_step_gaps=median_gaps,
-                weekday_concentration=weekday_score,
-                weekday_hint=weekday_hint,
+                weekday_concentration=temporal.weekday_weekend_score,
+                weekday_hint=temporal.hint,
+                temporal_score=temporal.score,
+                temporal_hint=temporal.hint,
+                time_bucket_score=temporal.time_bucket_score,
             )
         )
 
@@ -318,6 +324,9 @@ def mine_patterns(
                 median_step_gaps=candidate.median_step_gaps,
                 weekday_concentration=candidate.weekday_concentration,
                 weekday_hint=candidate.weekday_hint,
+                temporal_score=candidate.temporal_score,
+                temporal_hint=candidate.temporal_hint,
+                time_bucket_score=candidate.time_bucket_score,
             )
         )
 

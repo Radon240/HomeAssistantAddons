@@ -30,6 +30,7 @@ def score_pattern(
     weighted_support_score = min(1.0, candidate.weighted_support / max(1.0, options.min_support))
     gap_stability = _gap_stability_score(candidate.median_step_gaps, options.max_step_gap_seconds)
     weekday_score = candidate.weekday_concentration
+    temporal_score = max(candidate.temporal_score, weekday_score)
 
     cadence_score = (
         cadence_result.confidence if cadence_result.cadence != CADENCE_IRREGULAR else 0.35
@@ -51,7 +52,7 @@ def score_pattern(
         + 0.13 * intent_score
         + 0.11 * semantic_score
         + 0.08 * area_score
-        + 0.07 * weekday_score
+        + 0.07 * temporal_score
         + 0.07 * gap_stability
         + 0.06 * cadence_score
         + 0.04 * origin_score
@@ -126,14 +127,14 @@ def score_pattern(
         ),
     ]
 
-    if weekday_score >= 0.5:
+    if temporal_score >= 0.45:
         factors.append(
             ExplanationFactor(
-                key="weekday",
-                label="Дни недели",
-                value=candidate.weekday_hint or "Устойчивый день недели",
+                key="temporal_context",
+                label="Временной контекст",
+                value=candidate.temporal_hint or candidate.weekday_hint or "Устойчивый временной паттерн",
                 weight=0.15,
-                score=round(weekday_score, 4),
+                score=round(temporal_score, 4),
             )
         )
 
@@ -172,8 +173,8 @@ def score_pattern(
         why_parts.append(candidate.area_hint.lower().rstrip("."))
     if cadence_result.cadence != CADENCE_IRREGULAR:
         why_parts.append(cadence_result.schedule_hint.lower())
-    elif candidate.weekday_hint:
-        why_parts.append(candidate.weekday_hint.lower())
+    elif candidate.temporal_hint or candidate.weekday_hint:
+        why_parts.append((candidate.temporal_hint or candidate.weekday_hint or "").lower())
 
     return ScoredPattern(
         base_confidence=base_confidence,
