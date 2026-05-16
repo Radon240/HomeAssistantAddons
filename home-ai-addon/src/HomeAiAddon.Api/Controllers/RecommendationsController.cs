@@ -73,9 +73,9 @@ public sealed class RecommendationsController(
                 batch.ScannedCount,
                 batch.ExcludedCount);
 
-            var entityMetadata = await LoadEntityMetadataAsync(entitiesService, cancellationToken);
+            var entityMetadata = await AnalyzeEventPayloadFactory.LoadEntityMetadataAsync(entitiesService, cancellationToken);
             var request = new AnalyzeRequestPayload(
-                batch.Events.Select(e => ToAnalyzeEventPayload(e, entityMetadata)).ToList(),
+                batch.Events.Select(e => AnalyzeEventPayloadFactory.ToPayload(e, entityMetadata)).ToList(),
                 BuildAnalyzeOptionsPayload(opts));
 
             var result = await analysisClient.AnalyzeAsync(request, cancellationToken);
@@ -149,9 +149,9 @@ public sealed class RecommendationsController(
                     "Недостаточно событий для диагностики."));
             }
 
-            var entityMetadata = await LoadEntityMetadataAsync(entitiesService, cancellationToken);
+            var entityMetadata = await AnalyzeEventPayloadFactory.LoadEntityMetadataAsync(entitiesService, cancellationToken);
             var request = new AnalyzeRequestPayload(
-                batch.Events.Select(e => ToAnalyzeEventPayload(e, entityMetadata)).ToList(),
+                batch.Events.Select(e => AnalyzeEventPayloadFactory.ToPayload(e, entityMetadata)).ToList(),
                 BuildAnalyzeOptionsPayload(opts));
 
             var result = await analysisClient.AnalyzeDiagnosticsAsync(request, cancellationToken);
@@ -346,36 +346,6 @@ public sealed class RecommendationsController(
             logger.LogError(ex, "Feedback item reset failed");
             return StatusCode(500, new { error = ex.Message });
         }
-    }
-
-    private static async Task<IReadOnlyDictionary<string, HomeAssistantEntityDto>> LoadEntityMetadataAsync(
-        HomeAssistantEntitiesService entitiesService,
-        CancellationToken cancellationToken)
-    {
-        var entities = await entitiesService.GetEntitiesAsync(cancellationToken);
-        return entities.ToDictionary(e => e.EntityId, StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static AnalyzeEventPayload ToAnalyzeEventPayload(
-        StateChangeEventDto e,
-        IReadOnlyDictionary<string, HomeAssistantEntityDto> metadata)
-    {
-        metadata.TryGetValue(e.EntityId, out var meta);
-        return new AnalyzeEventPayload(
-            e.Id,
-            e.EntityId,
-            e.OldState,
-            e.NewState,
-            e.FriendlyName ?? meta?.FriendlyName,
-            e.TimeFiredUtc,
-            e.ReceivedAtUtc,
-            meta?.Domain,
-            meta?.DeviceClass,
-            meta?.UnitOfMeasurement,
-            meta?.EntityCategory,
-            meta?.SupportedFeatures,
-            meta?.AreaId,
-            meta?.AreaName);
     }
 
     private static AnalyzeOptionsPayload BuildAnalyzeOptionsPayload(BehaviorAnalysisOptions opts) =>

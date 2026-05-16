@@ -5,10 +5,9 @@ from datetime import datetime, timedelta, timezone
 
 from app.device_semantics import DeviceRole, classify_event, is_meaningful_automation
 from app.models import AnalyzeOptions, DiagnosticsCounter, DiagnosticsResponse, EventInput
-from app.pattern_miner import _fits_step_gaps, _step_gaps, mine_patterns
-from app.recommender import analyze_events
-from app.river_tracker import OnlinePatternTracker
-from app.sequence_builder import ActionToken, build_sessions
+from app.pattern_miner import _fits_step_gaps, _step_gaps
+from app.recommender import build_recommendation_pipeline, rank_recommendations
+from app.sequence_builder import ActionToken
 
 
 def analyze_diagnostics(events: list[EventInput], options: AnalyzeOptions) -> DiagnosticsResponse:
@@ -45,22 +44,15 @@ def analyze_diagnostics(events: list[EventInput], options: AnalyzeOptions) -> Di
             continue
         eligible += 1
 
-    sessions = build_sessions(
-        events,
-        max_gap_seconds=options.max_gap_seconds,
-        lookback_hours=options.lookback_hours,
-    )
+    sessions, candidates = build_recommendation_pipeline(events, options)
     sequence_stats = _sequence_diagnostics(sessions, options)
 
-    mined = mine_patterns(
-        sessions,
-        min_support=options.min_support,
-        max_sequence_length=options.max_sequence_length,
-        max_step_gap_seconds=options.max_step_gap_seconds,
-        tracker=OnlinePatternTracker(),
+    recommendations, _ = rank_recommendations(
+        candidates,
+        session_count=len(sessions),
+        options=options,
     )
-    recommendations = analyze_events(events, options).recommendations
-    quality_filtered = max(0, len(mined) - len(recommendations))
+    quality_filtered = max(0, len(candidates) - len(recommendations))
 
     return DiagnosticsResponse(
         analyzed_event_count=considered,

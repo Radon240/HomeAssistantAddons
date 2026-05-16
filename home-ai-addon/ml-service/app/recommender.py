@@ -13,7 +13,7 @@ from app.models import (
 from app.pattern_miner import PatternCandidate, mine_patterns
 from app.pattern_scoring import passes_quality_gates, score_pattern
 from app.river_tracker import OnlinePatternTracker
-from app.sequence_builder import build_sessions
+from app.sequence_builder import ActionToken, build_sessions
 from app.feedback_learner import FeedbackContext, extract_domains
 from app.feedback_service import get_feedback_learner
 from app.temporal_analysis import (
@@ -24,6 +24,27 @@ from app.temporal_analysis import (
 
 
 def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> AnalyzeResponse:
+    sessions, candidates = build_recommendation_pipeline(events, options)
+    recommendations, training_samples = rank_recommendations(
+        candidates,
+        session_count=len(sessions),
+        options=options,
+    )
+
+    return AnalyzeResponse(
+        analyzed_event_count=len(events),
+        session_count=len(sessions),
+        pattern_candidates=len(candidates),
+        feedback_training_samples=training_samples,
+        recommendations=recommendations[:20],
+        options_used=options.model_dump(by_alias=True),
+    )
+
+
+def build_recommendation_pipeline(
+    events: list[EventInput],
+    options: AnalyzeOptions,
+) -> tuple[list[list[ActionToken]], list[PatternCandidate]]:
     sessions = build_sessions(
         events,
         max_gap_seconds=options.max_gap_seconds,
@@ -38,6 +59,14 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
         tracker=tracker,
     )
 
+    return sessions, candidates
+
+
+def rank_recommendations(
+    candidates: list[PatternCandidate],
+    session_count: int,
+    options: AnalyzeOptions,
+) -> tuple[list[Recommendation], int]:
     learner = get_feedback_learner()
     learner.set_dismiss_days(options.feedback_dismiss_days)
 
@@ -45,7 +74,7 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
     for candidate in candidates:
         recommendation = _to_recommendation(
             candidate,
-            session_count=len(sessions),
+            session_count=session_count,
             options=options,
             learner=learner,
         )
@@ -62,14 +91,7 @@ def analyze_events(events: list[EventInput], options: AnalyzeOptions) -> Analyze
         reverse=True,
     )
 
-    return AnalyzeResponse(
-        analyzed_event_count=len(events),
-        session_count=len(sessions),
-        pattern_candidates=len(candidates),
-        feedback_training_samples=learner.training_samples,
-        recommendations=recommendations[:20],
-        options_used=options.model_dump(by_alias=True),
-    )
+    return recommendations, learner.training_samples
 
 
 def _to_recommendation(

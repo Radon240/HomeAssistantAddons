@@ -63,9 +63,11 @@ public sealed class AnomalyDetectionService(
             batch.ScannedCount,
             batch.ExcludedCount);
 
-        var entityMetadata = await LoadEntityMetadataAsync(cancellationToken);
+        var entityMetadata = await AnalyzeEventPayloadFactory.LoadEntityMetadataAsync(
+            entitiesService,
+            cancellationToken);
         var request = new AnomalyDetectRequestPayload(
-            batch.Events.Select(e => ToAnalyzeEventPayload(e, entityMetadata)).ToList(),
+            batch.Events.Select(e => AnalyzeEventPayloadFactory.ToPayload(e, entityMetadata)).ToList(),
             BuildMlOptions(opts));
 
         var result = await analysisClient.DetectAnomaliesAsync(request, cancellationToken);
@@ -106,34 +108,6 @@ public sealed class AnomalyDetectionService(
             opts.IsolationForestContamination,
             opts.IsolationForestMinSamples);
 
-    private async Task<IReadOnlyDictionary<string, HomeAssistantEntityDto>> LoadEntityMetadataAsync(
-        CancellationToken cancellationToken)
-    {
-        var entities = await entitiesService.GetEntitiesAsync(cancellationToken);
-        return entities.ToDictionary(e => e.EntityId, StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static AnalyzeEventPayload ToAnalyzeEventPayload(
-        StateChangeEventDto e,
-        IReadOnlyDictionary<string, HomeAssistantEntityDto> metadata)
-    {
-        metadata.TryGetValue(e.EntityId, out var meta);
-        return new AnalyzeEventPayload(
-            e.Id,
-            e.EntityId,
-            e.OldState,
-            e.NewState,
-            e.FriendlyName ?? meta?.FriendlyName,
-            e.TimeFiredUtc,
-            e.ReceivedAtUtc,
-            meta?.Domain,
-            meta?.DeviceClass,
-            meta?.UnitOfMeasurement,
-            meta?.EntityCategory,
-            meta?.SupportedFeatures,
-            meta?.AreaId,
-            meta?.AreaName);
-    }
 }
 
 public sealed record AnomalyDetectionRunResult(
