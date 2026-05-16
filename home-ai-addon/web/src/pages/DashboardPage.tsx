@@ -18,6 +18,9 @@ export function DashboardPage() {
             <Link to="/recommendations">Рекомендации</Link> — повторяющиеся сценарии и confidence.
           </li>
           <li>
+            <Link to="/feedback">Обучение</Link> — сброс и управление отзывами ML-модели.
+          </li>
+          <li>
             <Link to="/anomalies">Аномалии</Link> — необычная активность и отклонения.
           </li>
           <li>
