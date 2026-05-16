@@ -1,5 +1,5 @@
 name: "Home AI Addon"
-version: "0.3.20"
+version: "0.3.21"
 slug: home_ai_addon
 description: "Home AI Addon: ASP.NET Core 9, React (Vite), SQLite, Ingress."
 url: "https://github.com/Radon240/HomeAssistantAddons"
