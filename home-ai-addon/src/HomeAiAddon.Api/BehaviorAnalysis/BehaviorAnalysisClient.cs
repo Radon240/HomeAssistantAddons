@@ -11,6 +11,10 @@ public sealed class BehaviorAnalysisClient(
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
+    private static readonly TimeSpan HealthCacheTtl = TimeSpan.FromSeconds(10);
+    private static readonly SemaphoreSlim HealthCacheLock = new(1, 1);
+    private static bool? cachedHealth;
+    private static DateTimeOffset healthCacheExpiresAtUtc;
 
     public async Task<AnalyzeResponsePayload> AnalyzeAsync(
         AnalyzeRequestPayload request,
@@ -238,11 +242,23 @@ public sealed class BehaviorAnalysisClient(
 
     public async Task<bool> IsHealthyAsync(CancellationToken cancellationToken = default)
     {
+        if (cachedHealth is { } cached && healthCacheExpiresAtUtc > DateTimeOffset.UtcNow)
+        {
+            return cached;
+        }
+
+        await HealthCacheLock.WaitAsync(cancellationToken);
         try
         {
+            if (cachedHealth is { } cachedAfterLock && healthCacheExpiresAtUtc > DateTimeOffset.UtcNow)
+            {
+                return cachedAfterLock;
+            }
+
             using var response = await httpClient.GetAsync("/health", cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                UpdateHealthCache(false);
                 return false;
             }
 
@@ -250,14 +266,27 @@ public sealed class BehaviorAnalysisClient(
                 JsonOptions,
                 cancellationToken);
 
-            return health is not null
+            var healthy = health is not null
                 && string.Equals(health.Status, "Healthy", StringComparison.OrdinalIgnoreCase);
+            UpdateHealthCache(healthy);
+            return healthy;
         }
         catch (Exception ex)
         {
             logger.LogDebug(ex, "ML service health check failed");
+            UpdateHealthCache(false);
             return false;
         }
+        finally
+        {
+            HealthCacheLock.Release();
+        }
+    }
+
+    private static void UpdateHealthCache(bool healthy)
+    {
+        cachedHealth = healthy;
+        healthCacheExpiresAtUtc = DateTimeOffset.UtcNow.Add(HealthCacheTtl);
     }
 
     private static bool IsRetryable(Exception ex) =>

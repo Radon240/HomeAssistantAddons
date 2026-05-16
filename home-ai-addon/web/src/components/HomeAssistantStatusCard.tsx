@@ -52,7 +52,11 @@ export function HomeAssistantStatusCard() {
     };
 
     void tick();
-    const id = window.setInterval(() => void tick(), 2000);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void tick();
+      }
+    }, 10000);
     return () => {
       cancelled = true;
       window.clearInterval(id);

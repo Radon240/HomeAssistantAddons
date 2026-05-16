@@ -7,7 +7,38 @@ public sealed class HomeAssistantEntitiesService(
     HomeAssistantConnectionResolver connectionResolver,
     ILogger<HomeAssistantEntitiesService> logger)
 {
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(45);
+    private readonly SemaphoreSlim cacheLock = new(1, 1);
+    private IReadOnlyList<HomeAssistantEntityDto>? cachedEntities;
+    private DateTimeOffset cacheExpiresAtUtc;
+
     public async Task<IReadOnlyList<HomeAssistantEntityDto>> GetEntitiesAsync(CancellationToken cancellationToken = default)
+    {
+        if (cachedEntities is not null && cacheExpiresAtUtc > DateTimeOffset.UtcNow)
+        {
+            return cachedEntities;
+        }
+
+        await cacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (cachedEntities is not null && cacheExpiresAtUtc > DateTimeOffset.UtcNow)
+            {
+                return cachedEntities;
+            }
+
+            var entities = await LoadEntitiesAsync(cancellationToken).ConfigureAwait(false);
+            cachedEntities = entities;
+            cacheExpiresAtUtc = DateTimeOffset.UtcNow.Add(CacheTtl);
+            return entities;
+        }
+        finally
+        {
+            cacheLock.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<HomeAssistantEntityDto>> LoadEntitiesAsync(CancellationToken cancellationToken)
     {
         if (!connectionResolver.TryResolve(out var endpoints))
         {
@@ -16,13 +47,14 @@ public sealed class HomeAssistantEntitiesService(
 
         var statesUri = HomeAssistantUriHelper.CombineRestPath(endpoints.RestApiBase, "states");
         var client = httpClientFactory.CreateClient("HomeAssistant");
-        var entityRegistry = await LoadEntityRegistryAsync(client, endpoints.RestApiBase, cancellationToken);
-        var deviceAreas = await LoadDeviceAreasAsync(client, endpoints.RestApiBase, cancellationToken);
-        var areaNames = await LoadAreaNamesAsync(client, endpoints.RestApiBase, cancellationToken);
+        var entityRegistryTask = LoadEntityRegistryAsync(client, endpoints.RestApiBase, cancellationToken);
+        var deviceAreasTask = LoadDeviceAreasAsync(client, endpoints.RestApiBase, cancellationToken);
+        var areaNamesTask = LoadAreaNamesAsync(client, endpoints.RestApiBase, cancellationToken);
 
         using var response = await client.GetAsync(statesUri, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
+            await Task.WhenAll(entityRegistryTask, deviceAreasTask, areaNamesTask).ConfigureAwait(false);
             logger.LogWarning(
                 "Не удалось получить states: {Status} {Uri}",
                 (int)response.StatusCode,
@@ -35,8 +67,13 @@ public sealed class HomeAssistantEntitiesService(
 
         if (doc.RootElement.ValueKind != JsonValueKind.Array)
         {
+            await Task.WhenAll(entityRegistryTask, deviceAreasTask, areaNamesTask).ConfigureAwait(false);
             return [];
         }
+
+        var entityRegistry = await entityRegistryTask.ConfigureAwait(false);
+        var deviceAreas = await deviceAreasTask.ConfigureAwait(false);
+        var areaNames = await areaNamesTask.ConfigureAwait(false);
 
         var list = new List<HomeAssistantEntityDto>();
         foreach (var item in doc.RootElement.EnumerateArray())

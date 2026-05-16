@@ -42,7 +42,11 @@ export function EventsPage() {
 
   useEffect(() => {
     void loadEvents();
-    const id = window.setInterval(() => void loadEvents(), 3000);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadEvents();
+      }
+    }, 10000);
     return () => window.clearInterval(id);
   }, [loadEvents]);
 
@@ -52,7 +56,7 @@ export function EventsPage() {
       <section className="card" style={{ display: "grid", gap: 12 }}>
         <h2 style={{ margin: 0 }}>События</h2>
         <p className="muted" style={{ margin: 0 }}>
-          История из SQLite + обновление каждые 3 с. Фильтр: точный id, шаблон (light.*) или domain (light).
+          История из SQLite + обновление каждые 10 с. Фильтр: точный id, шаблон (light.*) или domain (light).
         </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <label style={{ display: "grid", gap: 4, flex: "1 1 220px" }}>

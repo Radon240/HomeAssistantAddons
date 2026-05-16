@@ -6,7 +6,7 @@ export function DashboardPage() {
   return (
     <div className="row">
       <section className="card">
-        <h2 style={{ marginTop: 0 }}>Дашборд</h2>
+        <h2 style={{ marginTop: 0 }}>Обзор</h2>
         <p className="muted">
           Home AI Addon — мониторинг Home Assistant, сохранение событий в SQLite и UI через Ingress.
         </p>
