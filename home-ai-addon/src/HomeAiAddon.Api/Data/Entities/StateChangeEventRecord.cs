@@ -15,4 +15,10 @@ public sealed class StateChangeEventRecord
     public DateTimeOffset TimeFiredUtc { get; set; }
 
     public DateTimeOffset ReceivedAtUtc { get; set; }
+
+    public string? ContextId { get; set; }
+
+    public string? ContextUserId { get; set; }
+
+    public string? ContextParentId { get; set; }
 }

@@ -15,7 +15,10 @@ public sealed class StateChangeEventStore(ApplicationDbContext db) : IStateChang
             NewState = evt.NewState,
             FriendlyName = evt.FriendlyName,
             TimeFiredUtc = evt.TimeFiredUtc,
-            ReceivedAtUtc = evt.ReceivedAtUtc
+            ReceivedAtUtc = evt.ReceivedAtUtc,
+            ContextId = evt.ContextId,
+            ContextUserId = evt.ContextUserId,
+            ContextParentId = evt.ContextParentId
         };
 
         db.StateChangeEvents.Add(row);
@@ -119,5 +122,8 @@ public sealed class StateChangeEventStore(ApplicationDbContext db) : IStateChang
             row.NewState,
             row.FriendlyName,
             row.TimeFiredUtc,
-            row.ReceivedAtUtc);
+            row.ReceivedAtUtc,
+            row.ContextId,
+            row.ContextUserId,
+            row.ContextParentId);
 }

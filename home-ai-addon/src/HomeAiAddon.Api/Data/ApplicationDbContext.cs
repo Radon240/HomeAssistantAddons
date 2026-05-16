@@ -27,8 +27,12 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.Property(e => e.OldState).HasMaxLength(255);
             entity.Property(e => e.NewState).HasMaxLength(255);
             entity.Property(e => e.FriendlyName).HasMaxLength(255);
+            entity.Property(e => e.ContextId).HasMaxLength(64);
+            entity.Property(e => e.ContextUserId).HasMaxLength(64);
+            entity.Property(e => e.ContextParentId).HasMaxLength(64);
             entity.HasIndex(e => e.ReceivedAtUtc);
             entity.HasIndex(e => e.EntityId);
+            entity.HasIndex(e => e.ContextParentId);
         });
 
         modelBuilder.Entity<AnomalyAlertRecord>(entity =>

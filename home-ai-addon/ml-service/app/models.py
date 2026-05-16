@@ -14,6 +14,9 @@ class EventInput(BaseModel):
     friendly_name: str | None = Field(default=None, alias="friendlyName")
     time_fired_utc: datetime = Field(alias="timeFiredUtc")
     received_at_utc: datetime = Field(alias="receivedAtUtc")
+    context_id: str | None = Field(default=None, alias="contextId")
+    context_user_id: str | None = Field(default=None, alias="contextUserId")
+    context_parent_id: str | None = Field(default=None, alias="contextParentId")
     domain: str | None = None
     device_class: str | None = Field(default=None, alias="deviceClass")
     unit_of_measurement: str | None = Field(default=None, alias="unitOfMeasurement")

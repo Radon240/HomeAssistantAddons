@@ -11,6 +11,7 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 
 from app.device_semantics import classify_event, should_ignore_for_anomaly
+from app.event_intelligence import score_event_intelligence
 from app.models import AnomalyDetectionOptions, AnomalyItem, AnomalyResponse, EventInput
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,10 @@ def _events_to_frame(events: list[EventInput]) -> pd.DataFrame:
             logger.debug("Ignoring anomaly event %s: %s", event.entity_id, ignore_reason)
             continue
         semantics = classify_event(event)
+        intelligence = score_event_intelligence(event, semantics)
+        if intelligence.state_importance < 0.1 or intelligence.event_weight < 0.03:
+            logger.debug("Ignoring anomaly event %s: low contextual weight", event.entity_id)
+            continue
         rows.append(
             {
                 "id": event.id,
@@ -111,6 +116,10 @@ def _events_to_frame(events: list[EventInput]) -> pd.DataFrame:
                 "semantic_reason": semantics.reason,
                 "can_trigger": semantics.can_trigger,
                 "can_action": semantics.can_action,
+                "origin": intelligence.origin.value,
+                "intent_score": intelligence.intent_score,
+                "state_importance": intelligence.state_importance,
+                "event_weight": intelligence.event_weight,
             }
         )
     frame = pd.DataFrame(rows)
@@ -141,6 +150,10 @@ def _detect_hourly_zscore(
             ids=("id", list),
             label=("label", "first"),
             semantic_reason=("semantic_reason", "first"),
+            origin=("origin", "first"),
+            intent_score=("intent_score", "mean"),
+            state_importance=("state_importance", "mean"),
+            event_weight=("event_weight", "mean"),
         )
         .sort_values("hour_bucket")
     )
@@ -186,6 +199,7 @@ def _detect_hourly_zscore(
                     metrics={
                         "reason": "activity exceeded historical hourly baseline",
                         "semanticReason": str(row.get("semantic_reason", "")),
+                        **_context_metrics(row),
                         "zScore": round(float(z_value), 3),
                         "hourlyCount": int(row["count"]),
                         "rollingMean": round(float(rolling_mean.iloc[idx]), 3),
@@ -241,6 +255,7 @@ def _detect_unusual_hours(
                     metrics={
                         "reason": "event occurred outside historical time context",
                         "semanticReason": str(row.get("semantic_reason", "")),
+                        **_context_metrics(row),
                         "hour": hour,
                         "hourProbability": round(probability, 4),
                         "typicalHours": [int(h) for h in typical_hours],
@@ -315,6 +330,7 @@ def _detect_rolling_frequency(
                 metrics={
                     "reason": "rolling activity frequency changed significantly",
                     "semanticReason": str(entity_rows["semantic_reason"].iloc[-1]),
+                    **_context_metrics(entity_rows.iloc[-1]),
                     "zScore": round(float(z_value), 3),
                     "windowCount": int(latest_count),
                     "rollingMean": round(mean_value, 3),
@@ -383,6 +399,7 @@ def _detect_numeric_spikes(
                 metrics={
                     "reason": "numeric value exceeded historical rolling baseline",
                     "semanticReason": str(latest.get("semantic_reason", "")),
+                    **_context_metrics(latest),
                     "zScore": round(float(z_value), 3),
                     "latestValue": latest_value,
                     "rollingMean": round(mean_value, 3),
@@ -410,6 +427,10 @@ def _detect_isolation_forest(
             ids=("id", list),
             label=("label", "first"),
             semantic_reason=("semantic_reason", "first"),
+            origin=("origin", "first"),
+            intent_score=("intent_score", "mean"),
+            state_importance=("state_importance", "mean"),
+            event_weight=("event_weight", "mean"),
         )
         .sort_values("hour_bucket")
     )
@@ -452,6 +473,7 @@ def _detect_isolation_forest(
                 metrics={
                     "reason": "count/hour/weekday combination is outside behavioral baseline",
                     "semanticReason": str(row.get("semantic_reason", "")),
+                    **_context_metrics(row),
                     "isolationScore": round(score, 4),
                     "hourlyCount": int(row["count"]),
                     "hour": int(row["hour"]),
@@ -482,7 +504,8 @@ def _merge_candidates(
 
 
 def _to_item(raw: _RawAnomaly, options: AnomalyDetectionOptions) -> AnomalyItem:
-    severity = _score_to_severity(raw, options)
+    adjusted_score = _context_adjusted_score(raw)
+    severity = _score_to_severity(raw, adjusted_score, options)
     detection_id = hashlib.sha256(
         f"{raw.entity_id}|{raw.anomaly_type}|{raw.detected_at.isoformat()}".encode()
     ).hexdigest()[:16]
@@ -491,7 +514,7 @@ def _to_item(raw: _RawAnomaly, options: AnomalyDetectionOptions) -> AnomalyItem:
         entity_id=raw.entity_id,
         anomaly_type=raw.anomaly_type,
         severity=severity,
-        score=round(raw.score, 4),
+        score=round(adjusted_score, 4),
         method=raw.method,
         title=raw.title,
         explanation=raw.explanation,
@@ -501,8 +524,7 @@ def _to_item(raw: _RawAnomaly, options: AnomalyDetectionOptions) -> AnomalyItem:
     )
 
 
-def _score_to_severity(raw: _RawAnomaly, options: AnomalyDetectionOptions) -> str:
-    score = raw.score
+def _score_to_severity(raw: _RawAnomaly, score: float, options: AnomalyDetectionOptions) -> str:
     security_entity = any(
         marker in raw.entity_id
         for marker in ("lock.", "alarm_control_panel.", "smoke", "gas", "moisture", "water")
@@ -516,12 +538,31 @@ def _score_to_severity(raw: _RawAnomaly, options: AnomalyDetectionOptions) -> st
     return SEVERITY_LOW
 
 
+def _context_adjusted_score(raw: _RawAnomaly) -> float:
+    state_importance = float(raw.metrics.get("stateImportance", 0.7))
+    intent_score = float(raw.metrics.get("intentScore", 0.5))
+    origin = str(raw.metrics.get("origin", "unknown"))
+    origin_multiplier = 0.75 if origin == "automation" else 1.0
+    adjusted = raw.score * (0.55 + 0.45 * state_importance) * (0.75 + 0.25 * intent_score)
+    return float(np.clip(adjusted * origin_multiplier, 0.0, 1.0))
+
+
+def _context_metrics(row: pd.Series) -> dict[str, Any]:
+    return {
+        "origin": str(row.get("origin", "unknown")),
+        "intentScore": round(float(row.get("intent_score", 0.5)), 4),
+        "stateImportance": round(float(row.get("state_importance", 0.7)), 4),
+        "eventWeight": round(float(row.get("event_weight", 0.5)), 4),
+    }
+
+
 def _behavior_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         return frame
     return frame[
         (frame["can_trigger"].astype(bool) | frame["can_action"].astype(bool))
         & (frame["role"].isin(["sensor", "actuator", "hybrid"]))
+        & (frame["state_importance"].astype(float) >= 0.1)
     ].copy()
 
 

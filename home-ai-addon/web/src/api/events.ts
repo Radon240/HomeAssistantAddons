@@ -8,6 +8,9 @@ export type StateChangeEventDto = {
   friendlyName: string | null;
   timeFiredUtc: string;
   receivedAtUtc: string;
+  contextId: string | null;
+  contextUserId: string | null;
+  contextParentId: string | null;
 };
 
 export type EventsListResponse = {

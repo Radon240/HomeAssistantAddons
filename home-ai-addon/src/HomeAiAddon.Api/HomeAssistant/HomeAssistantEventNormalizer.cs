@@ -47,6 +47,11 @@ public static class HomeAssistantEventNormalizer
         var friendlyName = ReadFriendlyName(data, "new_state");
 
         var timeFiredUtc = ReadTimeFired(eventElement, receivedAtUtc);
+        var context = ReadContext(eventElement);
+        if (context.ContextId is null && data.TryGetProperty("new_state", out var newStateObj))
+        {
+            context = ReadContext(newStateObj);
+        }
 
         normalized = new NormalizedStateChangedEvent(
             entityId,
@@ -54,7 +59,10 @@ public static class HomeAssistantEventNormalizer
             oldState,
             friendlyName,
             timeFiredUtc,
-            receivedAtUtc);
+            receivedAtUtc,
+            context.ContextId,
+            context.UserId,
+            context.ParentId);
 
         return true;
     }
@@ -103,4 +111,26 @@ public static class HomeAssistantEventNormalizer
 
         return fn.GetString();
     }
+
+    private static HomeAssistantContext ReadContext(JsonElement element)
+    {
+        if (!element.TryGetProperty("context", out var context) || context.ValueKind != JsonValueKind.Object)
+        {
+            return new HomeAssistantContext(null, null, null);
+        }
+
+        return new HomeAssistantContext(
+            ReadNullableString(context, "id"),
+            ReadNullableString(context, "user_id"),
+            ReadNullableString(context, "parent_id"));
+    }
+
+    private static string? ReadNullableString(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String
+            ? prop.GetString()
+            : null;
+    }
+
+    private sealed record HomeAssistantContext(string? ContextId, string? UserId, string? ParentId);
 }

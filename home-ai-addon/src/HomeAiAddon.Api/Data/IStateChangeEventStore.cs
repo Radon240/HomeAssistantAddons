@@ -33,6 +33,9 @@ public sealed record StateChangeEventDto(
     string? NewState,
     string? FriendlyName,
     DateTimeOffset TimeFiredUtc,
-    DateTimeOffset ReceivedAtUtc);
+    DateTimeOffset ReceivedAtUtc,
+    string? ContextId,
+    string? ContextUserId,
+    string? ContextParentId);
 
 public sealed record HourlyEventBucket(DateTimeOffset HourUtc, int Count);

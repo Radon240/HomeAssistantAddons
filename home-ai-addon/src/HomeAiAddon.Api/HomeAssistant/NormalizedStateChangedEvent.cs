@@ -6,4 +6,7 @@ public sealed record NormalizedStateChangedEvent(
     string? OldState,
     string? FriendlyName,
     DateTimeOffset TimeFiredUtc,
-    DateTimeOffset ReceivedAtUtc);
+    DateTimeOffset ReceivedAtUtc,
+    string? ContextId,
+    string? ContextUserId,
+    string? ContextParentId);

@@ -18,6 +18,7 @@ from app.temporal_analysis import weekday_concentration
 class PatternOccurrence:
     started_at: datetime
     step_gaps_seconds: tuple[float, ...]
+    weight: float
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,11 @@ class PatternCandidate:
     lift: float
     frequency_score: float
     tokens: tuple[ActionToken, ...]
+    weighted_support: float = 0.0
+    weighted_confidence: float = 0.0
+    intent_score: float = 0.0
+    automation_origin_ratio: float = 0.0
+    negative_evidence: float = 0.0
     semantic_score: float = 0.0
     semantic_reason: str = ""
     area_score: float = 0.5
@@ -79,6 +85,7 @@ def collect_pattern_occurrences(
                     PatternOccurrence(
                         started_at=pattern_tokens[0].occurred_at,
                         step_gaps_seconds=gaps,
+                        weight=_pattern_weight(pattern_tokens),
                     )
                 )
 
@@ -117,6 +124,7 @@ def extract_ngram_counts(
                     continue
                 pattern_keys = tuple(keys[start : start + length])
                 pattern_key = "|".join(pattern_keys)
+                occurrence_weight = _pattern_weight(pattern_tokens)
                 token_lookup.setdefault(pattern_key, pattern_tokens)
                 records.append(
                     {
@@ -125,6 +133,7 @@ def extract_ngram_counts(
                         "pattern_key": pattern_key,
                         "entity_keys": pattern_keys,
                         "labels": tuple(labels[start : start + length]),
+                        "occurrence_weight": occurrence_weight,
                     }
                 )
 
@@ -136,6 +145,7 @@ def extract_ngram_counts(
                 "labels",
                 "tokens",
                 "support_count",
+                "weighted_support",
                 "length",
             ]
         )
@@ -145,6 +155,7 @@ def extract_ngram_counts(
         frame.groupby("pattern_key", as_index=False)
         .agg(
             support_count=("session_id", "nunique"),
+            weighted_support=("occurrence_weight", "sum"),
             length=("length", "max"),
             entity_keys=("entity_keys", "first"),
             labels=("labels", "first"),
@@ -177,6 +188,7 @@ def mine_patterns(
 
     session_count = len(sessions)
     prefix_support: dict[tuple[str, ...], int] = {}
+    prefix_weight: dict[tuple[str, ...], float] = {}
     suffix_support: dict[str, int] = {}
 
     for _, row in frame.iterrows():
@@ -186,7 +198,9 @@ def mine_patterns(
         prefix = entity_keys[:-1]
         prefix_key = "|".join(prefix)
         count = int(row["support_count"])
+        weight = float(row["weighted_support"])
         prefix_support[prefix_key] = max(prefix_support.get(prefix_key, 0), count)
+        prefix_weight[prefix_key] = max(prefix_weight.get(prefix_key, 0.0), weight)
 
         suffix_key = entity_keys[-1]
         suffix_support[suffix_key] = max(
@@ -207,6 +221,7 @@ def mine_patterns(
         support = int(row["support_count"])
         if support < min_support:
             continue
+        weighted_support = round(float(row["weighted_support"]), 4)
 
         prefix = entity_keys[:-1]
         prefix_key = "|".join(prefix)
@@ -216,6 +231,8 @@ def mine_patterns(
             1,
         )
         confidence = support / prefix_count
+        weighted_confidence = weighted_support / max(prefix_weight.get(prefix_key, 0.0), weighted_support, 1e-6)
+        negative_evidence = max(0.0, (prefix_count - support) / max(prefix_count, 1))
 
         suffix_key = entity_keys[-1]
         suffix_count = max(suffix_support.get(suffix_key, 0), 1)
@@ -235,6 +252,8 @@ def mine_patterns(
             continue
         semantic_score = _semantic_score(row["tokens"])
         area_score, area_hint = _area_context(row["tokens"])
+        intent_score = _intent_score(row["tokens"])
+        automation_origin_ratio = _automation_origin_ratio(row["tokens"])
 
         candidates.append(
             PatternCandidate(
@@ -246,6 +265,11 @@ def mine_patterns(
                 lift=round(lift, 4),
                 frequency_score=0.0,
                 tokens=row["tokens"],
+                weighted_support=weighted_support,
+                weighted_confidence=round(weighted_confidence, 4),
+                intent_score=intent_score,
+                automation_origin_ratio=automation_origin_ratio,
+                negative_evidence=round(negative_evidence, 4),
                 semantic_score=semantic_score,
                 semantic_reason=semantic_reason,
                 area_score=area_score,
@@ -274,6 +298,11 @@ def mine_patterns(
                 lift=candidate.lift,
                 frequency_score=round(float(score), 4),
                 tokens=candidate.tokens,
+                weighted_support=candidate.weighted_support,
+                weighted_confidence=candidate.weighted_confidence,
+                intent_score=candidate.intent_score,
+                automation_origin_ratio=candidate.automation_origin_ratio,
+                negative_evidence=candidate.negative_evidence,
                 semantic_score=candidate.semantic_score,
                 semantic_reason=candidate.semantic_reason,
                 area_score=candidate.area_score,
@@ -333,6 +362,32 @@ def _semantic_score(tokens: tuple[ActionToken, ...]) -> float:
     return round(min(1.0, score), 4)
 
 
+def _pattern_weight(tokens: tuple[ActionToken, ...]) -> float:
+    if not tokens:
+        return 0.0
+    weights = [token.intelligence.event_weight for token in tokens]
+    return round(sum(weights) / len(weights), 4)
+
+
+def _intent_score(tokens: tuple[ActionToken, ...]) -> float:
+    if not tokens:
+        return 0.0
+    scores = [token.intelligence.intent_score for token in tokens]
+    trigger_bonus = 0.1 if tokens[0].intelligence.intent_score >= 0.6 else 0.0
+    return round(min(1.0, sum(scores) / len(scores) + trigger_bonus), 4)
+
+
+def _automation_origin_ratio(tokens: tuple[ActionToken, ...]) -> float:
+    if not tokens:
+        return 0.0
+    generated = sum(
+        1
+        for token in tokens
+        if token.intelligence.origin.value in {"automation", "cascade"}
+    )
+    return round(generated / len(tokens), 4)
+
+
 def _area_context(tokens: tuple[ActionToken, ...]) -> tuple[float, str | None]:
     named_areas = [token.area_name or token.area_id for token in tokens if token.area_name or token.area_id]
     if len(named_areas) < 2:
@@ -347,7 +402,17 @@ def _area_context(tokens: tuple[ActionToken, ...]) -> tuple[float, str | None]:
     if len(unique) <= 2:
         return 0.75, "Сценарий связывает соседние зоны: " + ", ".join(unique) + "."
 
-    return 0.35, "Сценарий затрагивает много разных зон: " + ", ".join(unique[:4]) + "."
+    short_gaps = all(gap <= 180 for gap in _step_gaps(tokens))
+    movement_like = (
+        short_gaps
+        and tokens[0].semantics.can_trigger
+        and any(token.semantics.can_action for token in tokens[1:])
+        and _automation_origin_ratio(tokens) <= 0.34
+    )
+    if movement_like:
+        return 0.65, "Похоже на естественный multi-room путь: " + " → ".join(named_areas[:5]) + "."
+
+    return 0.4, "Сценарий затрагивает много разных зон: " + ", ".join(unique[:4]) + "."
 
 
 def _is_contiguous_subsequence(short: tuple[str, ...], long: tuple[str, ...]) -> bool:
