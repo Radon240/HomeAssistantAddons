@@ -90,6 +90,73 @@ public sealed class BehaviorAnalysisClient(
         return payload ?? throw new InvalidOperationException("ML service returned empty feedback response.");
     }
 
+    public async Task<FeedbackStatePayload> GetFeedbackStateAsync(
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync("/api/v1/feedback/state", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            logger.LogWarning("ML feedback state failed: {StatusCode} {Body}", (int)response.StatusCode, body);
+            throw new HttpRequestException(
+                $"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}). Body: {body}");
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<FeedbackStatePayload>(
+            JsonOptions,
+            cancellationToken);
+
+        return payload ?? throw new InvalidOperationException("ML service returned empty feedback state response.");
+    }
+
+    public async Task<FeedbackResponsePayload> ResetFeedbackAsync(
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/v1/feedback");
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            logger.LogWarning("ML feedback reset failed: {StatusCode} {Body}", (int)response.StatusCode, body);
+            throw new HttpRequestException(
+                $"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}). Body: {body}");
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<FeedbackResponsePayload>(
+            JsonOptions,
+            cancellationToken);
+
+        return payload ?? throw new InvalidOperationException("ML service returned empty feedback reset response.");
+    }
+
+    public async Task<FeedbackResponsePayload> ResetFeedbackItemsAsync(
+        FeedbackResetItemsRequestPayload request,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            "/api/v1/feedback/reset-items",
+            request,
+            JsonOptions,
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            logger.LogWarning(
+                "ML feedback item reset failed: {StatusCode} {Body}",
+                (int)response.StatusCode,
+                body);
+            throw new HttpRequestException(
+                $"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}). Body: {body}");
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<FeedbackResponsePayload>(
+            JsonOptions,
+            cancellationToken);
+
+        return payload ?? throw new InvalidOperationException("ML service returned empty feedback item reset response.");
+    }
+
     public async Task<AnomalyDetectResponsePayload> DetectAnomaliesAsync(
         AnomalyDetectRequestPayload request,
         CancellationToken cancellationToken = default)

@@ -36,16 +36,32 @@ class RankingAdjustment:
     final_multiplier: float
 
 
+@dataclass(frozen=True)
+class FeedbackStateSnapshot:
+    training_samples: int
+    pattern_useful: dict[str, int]
+    pattern_not_useful: dict[str, int]
+    entity_useful: dict[str, int]
+    entity_not_useful: dict[str, int]
+    dismissed_until: dict[str, str]
+
+
+@dataclass(frozen=True)
+class FeedbackResetResult:
+    reset_all: bool
+    removed_pattern_keys: int
+    removed_entity_keys: int
+    removed_dismissals: int
+    training_samples: int
+
+
 class FeedbackLearner:
     """Online preference model (River logistic regression) + entity/pattern counters."""
 
     def __init__(self, state_path: Path, dismiss_days: int = 14) -> None:
         self._state_path = state_path
         self._dismiss_days = dismiss_days
-        self._model = compose.Pipeline(
-            preprocessing.StandardScaler(),
-            linear_model.LogisticRegression(optimizer=optim.SGD(0.08)),
-        )
+        self._model = self._new_model()
         self._pattern_useful: dict[str, stats.Sum] = {}
         self._pattern_not_useful: dict[str, stats.Sum] = {}
         self._entity_useful: dict[str, stats.Sum] = {}
@@ -116,6 +132,91 @@ class FeedbackLearner:
     def training_samples(self) -> int:
         return self._training_samples
 
+    def snapshot(self) -> FeedbackStateSnapshot:
+        self._drop_expired_dismissals()
+        return FeedbackStateSnapshot(
+            training_samples=self._training_samples,
+            pattern_useful={k: int(v.get()) for k, v in self._pattern_useful.items()},
+            pattern_not_useful={k: int(v.get()) for k, v in self._pattern_not_useful.items()},
+            entity_useful={k: int(v.get()) for k, v in self._entity_useful.items()},
+            entity_not_useful={k: int(v.get()) for k, v in self._entity_not_useful.items()},
+            dismissed_until={k: v.isoformat() for k, v in self._dismissed_until.items()},
+        )
+
+    def reset_all(self) -> FeedbackResetResult:
+        removed_patterns = len(set(self._pattern_useful) | set(self._pattern_not_useful))
+        removed_entities = len(set(self._entity_useful) | set(self._entity_not_useful))
+        removed_dismissals = len(self._dismissed_until)
+        self._pattern_useful.clear()
+        self._pattern_not_useful.clear()
+        self._entity_useful.clear()
+        self._entity_not_useful.clear()
+        self._dismissed_until.clear()
+        self._training_samples = 0
+        self._model = self._new_model()
+        self._delete_state_file()
+        logger.info("Reset all feedback learner state")
+        return FeedbackResetResult(True, removed_patterns, removed_entities, removed_dismissals, 0)
+
+    def reset_items(
+        self,
+        pattern_keys: tuple[str, ...] = (),
+        recommendation_ids: tuple[str, ...] = (),
+        entity_ids: tuple[str, ...] = (),
+        clear_positive: bool = False,
+        clear_negative: bool = True,
+        clear_dismissals: bool = True,
+    ) -> FeedbackResetResult:
+        normalized_patterns = {key.strip() for key in pattern_keys if key and key.strip()}
+        normalized_recommendations = {key.strip() for key in recommendation_ids if key and key.strip()}
+        normalized_entities = {key.strip() for key in entity_ids if key and key.strip()}
+
+        removed_patterns = 0
+        removed_entities = 0
+        removed_samples = 0
+
+        for key in normalized_patterns:
+            if clear_positive:
+                removed_samples += self._remove_counter(self._pattern_useful, key)
+            if clear_negative:
+                removed_samples += self._remove_counter(self._pattern_not_useful, key)
+            removed_patterns += 1
+
+        for entity_id in normalized_entities:
+            if clear_positive:
+                removed_samples += self._remove_counter(self._entity_useful, entity_id)
+            if clear_negative:
+                removed_samples += self._remove_counter(self._entity_not_useful, entity_id)
+            removed_entities += 1
+
+        removed_dismissals = 0
+        if clear_dismissals:
+            removed_dismissals = self._remove_dismissals(
+                normalized_patterns,
+                normalized_recommendations,
+                normalized_entities,
+            )
+
+        # River weights are intentionally not persisted; reset the in-memory ranker so removed
+        # negative examples stop influencing the current process immediately.
+        self._model = self._new_model()
+        self._training_samples = max(0, self._training_samples - removed_samples)
+        self._save()
+        logger.info(
+            "Reset feedback items: patterns=%s entities=%s dismissals=%s samples=%s",
+            removed_patterns,
+            removed_entities,
+            removed_dismissals,
+            removed_samples,
+        )
+        return FeedbackResetResult(
+            False,
+            removed_patterns,
+            removed_entities,
+            removed_dismissals,
+            self._training_samples,
+        )
+
     def _predict_useful_probability(self, features: dict[str, float | int]) -> float:
         if self._training_samples < 2:
             return 0.5
@@ -170,15 +271,19 @@ class FeedbackLearner:
         )
 
     def _is_dismissed(self, context: FeedbackContext) -> bool:
+        self._drop_expired_dismissals()
         for key in self._dismissal_keys(context):
             until = self._dismissed_until.get(key)
             if until is None:
                 continue
-            if until <= datetime.now(timezone.utc):
-                del self._dismissed_until[key]
-                continue
             return True
         return False
+
+    def _drop_expired_dismissals(self) -> None:
+        now = datetime.now(timezone.utc)
+        expired = [key for key, until in self._dismissed_until.items() if until <= now]
+        for key in expired:
+            del self._dismissed_until[key]
 
     @staticmethod
     def _features(context: FeedbackContext) -> dict[str, float | int]:
@@ -205,6 +310,30 @@ class FeedbackLearner:
     def _counter_value(store: dict[str, stats.Sum], key: str) -> int:
         counter = store.get(key)
         return int(counter.get()) if counter is not None else 0
+
+    @staticmethod
+    def _remove_counter(store: dict[str, stats.Sum], key: str) -> int:
+        counter = store.pop(key, None)
+        return int(counter.get()) if counter is not None else 0
+
+    def _remove_dismissals(
+        self,
+        pattern_keys: set[str],
+        recommendation_ids: set[str],
+        entity_ids: set[str],
+    ) -> int:
+        to_remove: set[str] = set()
+        to_remove.update(key for key in pattern_keys if key in self._dismissed_until)
+        to_remove.update(key for key in recommendation_ids if key in self._dismissed_until)
+        for key in self._dismissed_until:
+            if not key.startswith("entities:"):
+                continue
+            parts = set(key.removeprefix("entities:").split("|"))
+            if parts & entity_ids:
+                to_remove.add(key)
+        for key in to_remove:
+            self._dismissed_until.pop(key, None)
+        return len(to_remove)
 
     def _load(self) -> None:
         if not self._state_path.exists():
@@ -240,6 +369,19 @@ class FeedbackLearner:
         self._state_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
+        )
+
+    def _delete_state_file(self) -> None:
+        try:
+            self._state_path.unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning("Failed to delete feedback state file %s: %s", self._state_path, exc)
+
+    @staticmethod
+    def _new_model():
+        return compose.Pipeline(
+            preprocessing.StandardScaler(),
+            linear_model.LogisticRegression(optimizer=optim.SGD(0.08)),
         )
 
 

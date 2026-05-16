@@ -142,6 +142,37 @@ class FeedbackResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class FeedbackResetItemsRequest(BaseModel):
+    pattern_keys: list[str] = Field(default_factory=list, alias="patternKeys")
+    recommendation_ids: list[str] = Field(default_factory=list, alias="recommendationIds")
+    entity_ids: list[str] = Field(default_factory=list, alias="entityIds")
+    clear_positive: bool = Field(default=False, alias="clearPositive")
+    clear_negative: bool = Field(default=True, alias="clearNegative")
+    clear_dismissals: bool = Field(default=True, alias="clearDismissals")
+
+    model_config = {"populate_by_name": True}
+
+    @field_validator("pattern_keys", "recommendation_ids", "entity_ids", mode="before")
+    @classmethod
+    def coerce_string_list(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if item is not None and str(item).strip()]
+        return []
+
+
+class FeedbackStateResponse(BaseModel):
+    training_samples: int = Field(alias="trainingSamples")
+    pattern_useful: dict[str, int] = Field(alias="patternUseful")
+    pattern_not_useful: dict[str, int] = Field(alias="patternNotUseful")
+    entity_useful: dict[str, int] = Field(alias="entityUseful")
+    entity_not_useful: dict[str, int] = Field(alias="entityNotUseful")
+    dismissed_until: dict[str, str] = Field(alias="dismissedUntil")
+
+    model_config = {"populate_by_name": True}
+
+
 class Recommendation(BaseModel):
     id: str
     pattern_key: str = Field(alias="patternKey")

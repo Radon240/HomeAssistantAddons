@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from app.feedback_learner import FeedbackContext, FeedbackLearner, VERDICT_NOT_USEFUL, VERDICT_USEFUL
-from app.models import FeedbackRequest
+from app.models import FeedbackResetItemsRequest, FeedbackRequest
 
 _learner: FeedbackLearner | None = None
 
@@ -47,4 +47,23 @@ def apply_feedback_to_learner(request: FeedbackRequest) -> FeedbackLearner:
     if request.verdict not in {VERDICT_USEFUL, VERDICT_NOT_USEFUL}:
         raise ValueError("verdict must be 'useful' or 'not_useful'")
     learner.record_feedback(context_from_request(request), request.verdict)
+    return learner
+
+
+def reset_feedback_state() -> FeedbackLearner:
+    learner = get_feedback_learner()
+    learner.reset_all()
+    return learner
+
+
+def reset_feedback_items(request: FeedbackResetItemsRequest) -> FeedbackLearner:
+    learner = get_feedback_learner()
+    learner.reset_items(
+        pattern_keys=tuple(request.pattern_keys),
+        recommendation_ids=tuple(request.recommendation_ids),
+        entity_ids=tuple(request.entity_ids),
+        clear_positive=request.clear_positive,
+        clear_negative=request.clear_negative,
+        clear_dismissals=request.clear_dismissals,
+    )
     return learner

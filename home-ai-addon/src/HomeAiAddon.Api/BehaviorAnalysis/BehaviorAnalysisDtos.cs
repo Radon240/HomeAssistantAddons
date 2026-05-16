@@ -85,6 +85,22 @@ public sealed record FeedbackResponsePayload(
     int TrainingSamples,
     string Message);
 
+public sealed record FeedbackResetItemsRequestPayload(
+    IReadOnlyList<string> PatternKeys,
+    IReadOnlyList<string> RecommendationIds,
+    IReadOnlyList<string> EntityIds,
+    bool ClearPositive = false,
+    bool ClearNegative = true,
+    bool ClearDismissals = true);
+
+public sealed record FeedbackStatePayload(
+    int TrainingSamples,
+    IReadOnlyDictionary<string, int> PatternUseful,
+    IReadOnlyDictionary<string, int> PatternNotUseful,
+    IReadOnlyDictionary<string, int> EntityUseful,
+    IReadOnlyDictionary<string, int> EntityNotUseful,
+    IReadOnlyDictionary<string, string> DismissedUntil);
+
 public sealed record SequenceStepPayload(
     string Label,
     string EntityId,

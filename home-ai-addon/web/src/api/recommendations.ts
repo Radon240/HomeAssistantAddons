@@ -93,6 +93,34 @@ export interface FeedbackResponse {
   message: string;
 }
 
+export interface FeedbackCounterEntry {
+  key: string;
+  count: number;
+}
+
+export interface DismissedFeedbackEntry {
+  key: string;
+  until: string;
+}
+
+export interface FeedbackStateResponse {
+  trainingSamples: number;
+  patternUseful: FeedbackCounterEntry[];
+  patternNotUseful: FeedbackCounterEntry[];
+  entityUseful: FeedbackCounterEntry[];
+  entityNotUseful: FeedbackCounterEntry[];
+  dismissedUntil: DismissedFeedbackEntry[];
+}
+
+export interface ResetFeedbackItemsRequest {
+  patternKeys?: string[];
+  recommendationIds?: string[];
+  entityIds?: string[];
+  clearPositive?: boolean;
+  clearNegative?: boolean;
+  clearDismissals?: boolean;
+}
+
 export function fetchRecommendations(): Promise<RecommendationsResponse> {
   return fetchJson<RecommendationsResponse>("/api/recommendations");
 }
@@ -102,6 +130,24 @@ export function submitRecommendationFeedback(
   body: RecommendationFeedbackRequest
 ): Promise<FeedbackResponse> {
   return fetchJson<FeedbackResponse>(`/api/recommendations/${recommendationId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+export function fetchFeedbackState(): Promise<FeedbackStateResponse> {
+  return fetchJson<FeedbackStateResponse>("/api/recommendations/feedback/state");
+}
+
+export function resetAllFeedback(): Promise<FeedbackResponse> {
+  return fetchJson<FeedbackResponse>("/api/recommendations/feedback", {
+    method: "DELETE"
+  });
+}
+
+export function resetFeedbackItems(body: ResetFeedbackItemsRequest): Promise<FeedbackResponse> {
+  return fetchJson<FeedbackResponse>("/api/recommendations/feedback/reset-items", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)

@@ -183,6 +183,110 @@ public sealed class RecommendationsController(
         }
     }
 
+    [HttpGet("feedback/state")]
+    public async Task<ActionResult<FeedbackStateResponse>> GetFeedbackState(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!await analysisClient.IsHealthyAsync(cancellationToken))
+            {
+                return StatusCode(503, new { error = "ML service unavailable" });
+            }
+
+            var state = await analysisClient.GetFeedbackStateAsync(cancellationToken);
+            return Ok(new FeedbackStateResponse(
+                state.TrainingSamples,
+                ToEntries(state.PatternUseful),
+                ToEntries(state.PatternNotUseful),
+                ToEntries(state.EntityUseful),
+                ToEntries(state.EntityNotUseful),
+                state.DismissedUntil
+                    .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(kv => new DismissedFeedbackEntry(kv.Key, kv.Value))
+                    .ToList()));
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "ML feedback state request failed");
+            return StatusCode(503, new { error = "ML service unavailable", detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Feedback state failed");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("feedback")]
+    public async Task<ActionResult<FeedbackResponsePayload>> ResetFeedback(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!await analysisClient.IsHealthyAsync(cancellationToken))
+            {
+                return StatusCode(503, new { error = "ML service unavailable" });
+            }
+
+            return Ok(await analysisClient.ResetFeedbackAsync(cancellationToken));
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "ML feedback reset request failed");
+            return StatusCode(503, new { error = "ML service unavailable", detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Feedback reset failed");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("feedback/reset-items")]
+    public async Task<ActionResult<FeedbackResponsePayload>> ResetFeedbackItems(
+        [FromBody] ResetFeedbackItemsRequest body,
+        CancellationToken cancellationToken = default)
+    {
+        var patternKeys = Normalize(body.PatternKeys);
+        var recommendationIds = Normalize(body.RecommendationIds);
+        var entityIds = Normalize(body.EntityIds);
+        if (patternKeys.Count == 0 && recommendationIds.Count == 0 && entityIds.Count == 0)
+        {
+            return BadRequest(new { error = "At least one patternKeys, recommendationIds or entityIds item is required" });
+        }
+
+        try
+        {
+            if (!await analysisClient.IsHealthyAsync(cancellationToken))
+            {
+                return StatusCode(503, new { error = "ML service unavailable" });
+            }
+
+            var result = await analysisClient.ResetFeedbackItemsAsync(
+                new FeedbackResetItemsRequestPayload(
+                    patternKeys,
+                    recommendationIds,
+                    entityIds,
+                    body.ClearPositive ?? false,
+                    body.ClearNegative ?? true,
+                    body.ClearDismissals ?? true),
+                cancellationToken);
+
+            return Ok(result);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "ML feedback item reset request failed");
+            return StatusCode(503, new { error = "ML service unavailable", detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Feedback item reset failed");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     private static async Task<IReadOnlyDictionary<string, HomeAssistantEntityDto>> LoadEntityMetadataAsync(
         HomeAssistantEntitiesService entitiesService,
         CancellationToken cancellationToken)
@@ -210,6 +314,22 @@ public sealed class RecommendationsController(
             meta?.EntityCategory,
             meta?.SupportedFeatures);
     }
+
+    private static IReadOnlyList<FeedbackCounterEntry> ToEntries(IReadOnlyDictionary<string, int> values) =>
+        values
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(kv => new FeedbackCounterEntry(kv.Key, kv.Value))
+            .ToList();
+
+    private static IReadOnlyList<string> Normalize(IReadOnlyList<string>? values) =>
+        values?
+            .Select(v => v.Trim())
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(100)
+            .ToList()
+        ?? [];
 }
 
 public sealed record RecommendationFeedbackRequest(
@@ -220,6 +340,26 @@ public sealed record RecommendationFeedbackRequest(
     double? Confidence,
     double? FrequencyScore,
     IReadOnlyList<string>? EntityIds);
+
+public sealed record ResetFeedbackItemsRequest(
+    IReadOnlyList<string>? PatternKeys,
+    IReadOnlyList<string>? RecommendationIds,
+    IReadOnlyList<string>? EntityIds,
+    bool? ClearPositive,
+    bool? ClearNegative,
+    bool? ClearDismissals);
+
+public sealed record FeedbackStateResponse(
+    int TrainingSamples,
+    IReadOnlyList<FeedbackCounterEntry> PatternUseful,
+    IReadOnlyList<FeedbackCounterEntry> PatternNotUseful,
+    IReadOnlyList<FeedbackCounterEntry> EntityUseful,
+    IReadOnlyList<FeedbackCounterEntry> EntityNotUseful,
+    IReadOnlyList<DismissedFeedbackEntry> DismissedUntil);
+
+public sealed record FeedbackCounterEntry(string Key, int Count);
+
+public sealed record DismissedFeedbackEntry(string Key, string Until);
 
 public sealed record RecommendationsStatusResponse(
     bool MlHealthy,

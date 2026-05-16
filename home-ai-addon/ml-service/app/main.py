@@ -7,7 +7,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
-from app.feedback_service import apply_feedback_to_learner, get_feedback_learner
+from app.feedback_service import (
+    apply_feedback_to_learner,
+    get_feedback_learner,
+    reset_feedback_items,
+    reset_feedback_state,
+)
 from app.anomaly_detector import detect_anomalies
 from app.models import (
     AnalyzeOptions,
@@ -17,7 +22,9 @@ from app.models import (
     AnomalyDetectionOptions,
     AnomalyResponse,
     FeedbackRequest,
+    FeedbackResetItemsRequest,
     FeedbackResponse,
+    FeedbackStateResponse,
 )
 from app.recommender import analyze_events
 
@@ -70,6 +77,44 @@ async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
 def feedback_stats() -> dict[str, int]:
     learner = get_feedback_learner()
     return {"trainingSamples": learner.training_samples}
+
+
+@app.get("/api/v1/feedback/state", response_model=FeedbackStateResponse)
+def feedback_state() -> FeedbackStateResponse:
+    snapshot = get_feedback_learner().snapshot()
+    return FeedbackStateResponse(
+        training_samples=snapshot.training_samples,
+        pattern_useful=snapshot.pattern_useful,
+        pattern_not_useful=snapshot.pattern_not_useful,
+        entity_useful=snapshot.entity_useful,
+        entity_not_useful=snapshot.entity_not_useful,
+        dismissed_until=snapshot.dismissed_until,
+    )
+
+
+@app.delete("/api/v1/feedback", response_model=FeedbackResponse)
+async def reset_feedback() -> FeedbackResponse:
+    learner = await asyncio.to_thread(reset_feedback_state)
+    return FeedbackResponse(
+        accepted=True,
+        training_samples=learner.training_samples,
+        message="Feedback state reset",
+    )
+
+
+@app.post("/api/v1/feedback/reset-items", response_model=FeedbackResponse)
+async def reset_feedback_selected(request: FeedbackResetItemsRequest) -> FeedbackResponse:
+    if not request.pattern_keys and not request.recommendation_ids and not request.entity_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one patternKeys, recommendationIds or entityIds item.",
+        )
+    learner = await asyncio.to_thread(reset_feedback_items, request)
+    return FeedbackResponse(
+        accepted=True,
+        training_samples=learner.training_samples,
+        message="Selected feedback items reset",
+    )
 
 
 @app.post("/api/v1/anomalies", response_model=AnomalyResponse)

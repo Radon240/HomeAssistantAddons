@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnalysisExclusionsPanel } from "../components/AnalysisExclusionsPanel";
+import { FeedbackLearningPanel } from "../components/FeedbackLearningPanel";
 import { RecommendationCard } from "../components/RecommendationCard";
 import {
   fetchRecommendations,
@@ -31,6 +32,7 @@ export function RecommendationsPage() {
   return (
     <div className="row">
       <AnalysisExclusionsPanel onSaved={() => void load()} />
+      <FeedbackLearningPanel onChanged={() => void load()} />
       <section className="card">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
