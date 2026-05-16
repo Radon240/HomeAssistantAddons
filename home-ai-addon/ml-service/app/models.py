@@ -190,6 +190,7 @@ class AnomalyDetectionOptions(BaseModel):
     unusual_hour_max_ratio: float = Field(
         default=0.05, ge=0.01, le=0.25, alias="unusualHourMaxRatio"
     )
+    min_numeric_delta: float = Field(default=0.5, ge=0.0, le=100000.0, alias="minNumericDelta")
     min_score: float = Field(default=0.55, ge=0.0, le=1.0, alias="minScore")
     medium_severity_threshold: float = Field(
         default=0.7, ge=0.0, le=1.0, alias="mediumSeverityThreshold"

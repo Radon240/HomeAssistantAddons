@@ -8,6 +8,7 @@ from statistics import median
 import pandas as pd
 from sklearn.preprocessing import minmax_scale
 
+from app.device_semantics import is_meaningful_automation
 from app.river_tracker import OnlinePatternTracker
 from app.sequence_builder import ActionToken
 from app.temporal_analysis import weekday_concentration
@@ -29,6 +30,8 @@ class PatternCandidate:
     lift: float
     frequency_score: float
     tokens: tuple[ActionToken, ...]
+    semantic_score: float = 0.0
+    semantic_reason: str = ""
     occurrence_times: tuple[datetime, ...] = field(default_factory=tuple)
     median_step_gaps: tuple[float, ...] = field(default_factory=tuple)
     weekday_concentration: float = 0.0
@@ -61,6 +64,11 @@ def collect_pattern_occurrences(
         for length in range(2, min(max_length, len(keys)) + 1):
             for start in range(0, len(keys) - length + 1):
                 pattern_tokens = tuple(session[start : start + length])
+                meaningful, _ = is_meaningful_automation(
+                    [token.semantics for token in pattern_tokens]
+                )
+                if not meaningful:
+                    continue
                 gaps = _step_gaps(pattern_tokens)
                 if not _fits_step_gaps(gaps, max_step_gap_seconds):
                     continue
@@ -97,6 +105,11 @@ def extract_ngram_counts(
         for length in range(2, min(max_length, len(keys)) + 1):
             for start in range(0, len(keys) - length + 1):
                 pattern_tokens = tuple(session[start : start + length])
+                meaningful, _ = is_meaningful_automation(
+                    [token.semantics for token in pattern_tokens]
+                )
+                if not meaningful:
+                    continue
                 gaps = _step_gaps(pattern_tokens)
                 if not _fits_step_gaps(gaps, max_step_gap_seconds):
                     continue
@@ -213,6 +226,12 @@ def mine_patterns(
         gap_lists = [item.step_gaps_seconds for item in occ_list if item.step_gaps_seconds]
         median_gaps = _median_gaps(gap_lists)
         weekday_score, weekday_hint = weekday_concentration(list(times))
+        semantic_ok, semantic_reason = is_meaningful_automation(
+            [token.semantics for token in row["tokens"]]
+        )
+        if not semantic_ok:
+            continue
+        semantic_score = _semantic_score(row["tokens"])
 
         candidates.append(
             PatternCandidate(
@@ -224,6 +243,8 @@ def mine_patterns(
                 lift=round(lift, 4),
                 frequency_score=0.0,
                 tokens=row["tokens"],
+                semantic_score=semantic_score,
+                semantic_reason=semantic_reason,
                 occurrence_times=times,
                 median_step_gaps=median_gaps,
                 weekday_concentration=weekday_score,
@@ -248,6 +269,8 @@ def mine_patterns(
                 lift=candidate.lift,
                 frequency_score=round(float(score), 4),
                 tokens=candidate.tokens,
+                semantic_score=candidate.semantic_score,
+                semantic_reason=candidate.semantic_reason,
                 occurrence_times=candidate.occurrence_times,
                 median_step_gaps=candidate.median_step_gaps,
                 weekday_concentration=candidate.weekday_concentration,
@@ -286,6 +309,21 @@ def _drop_subsequence_duplicates(candidates: list[PatternCandidate]) -> list[Pat
             continue
         kept.append(candidate)
     return kept
+
+
+def _semantic_score(tokens: tuple[ActionToken, ...]) -> float:
+    if len(tokens) < 2:
+        return 0.0
+    trigger = tokens[0].semantics
+    actions = [token.semantics for token in tokens[1:]]
+    score = 0.55
+    if trigger.can_trigger:
+        score += 0.2
+    if all(action.can_action for action in actions):
+        score += 0.2
+    if trigger.intent.value in {"user_action", "environment_trigger"}:
+        score += 0.05
+    return round(min(1.0, score), 4)
 
 
 def _is_contiguous_subsequence(short: tuple[str, ...], long: tuple[str, ...]) -> bool:

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
+from app.device_semantics import DeviceSemantics, classify_event
 from app.models import EventInput
 
 # Protects Raspberry Pi from huge HA bursts inside one time window.
@@ -18,6 +19,7 @@ class ActionToken:
     friendly_name: str | None
     label: str
     entity_key: str
+    semantics: DeviceSemantics
     occurred_at: datetime
 
 
@@ -34,6 +36,12 @@ def tokenize_event(event: EventInput) -> ActionToken | None:
         if event.old_state == event.new_state:
             return None
 
+    semantics = classify_event(event)
+    if semantics.system_event or semantics.noisy or not semantics.significant:
+        return None
+    if not semantics.can_trigger and not semantics.can_action:
+        return None
+
     state = event.new_state or "unknown"
     name = event.friendly_name or event.entity_id.split(".", 1)[-1]
     label = f"{name} → {state}"
@@ -44,6 +52,7 @@ def tokenize_event(event: EventInput) -> ActionToken | None:
         friendly_name=event.friendly_name,
         label=label,
         entity_key=entity_key,
+        semantics=semantics,
         occurred_at=_normalize_dt(event.time_fired_utc),
     )
 

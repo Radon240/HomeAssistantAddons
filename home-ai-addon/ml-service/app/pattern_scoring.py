@@ -36,12 +36,14 @@ def score_pattern(
 
     association = candidate.confidence
     lift_norm = _normalize_lift(candidate.lift, options.min_lift)
+    semantic_score = candidate.semantic_score
 
     base_confidence = round(
-        0.25 * association
+        0.20 * association
         + 0.20 * lift_norm
         + 0.15 * min(1.0, support_ratio * 5.0)
-        + 0.15 * weekday_score
+        + 0.15 * semantic_score
+        + 0.10 * weekday_score
         + 0.10 * gap_stability
         + 0.15 * cadence_score,
         4,
@@ -52,7 +54,7 @@ def score_pattern(
             key="association",
             label="Последовательность",
             value=f"Шаги повторяются вместе в {int(association * 100)}% случаев после префикса",
-            weight=0.25,
+            weight=0.20,
             score=round(association, 4),
         ),
         ExplanationFactor(
@@ -68,6 +70,13 @@ def score_pattern(
             value=f"{candidate.support_count} сессий из {session_count} ({int(support_ratio * 100)}%)",
             weight=0.15,
             score=round(min(1.0, support_ratio * 5.0), 4),
+        ),
+        ExplanationFactor(
+            key="semantic",
+            label="Семантика устройств",
+            value=candidate.semantic_reason,
+            weight=0.15,
+            score=round(semantic_score, 4),
         ),
     ]
 
@@ -86,9 +95,9 @@ def score_pattern(
         gaps_text = ", ".join(f"{int(g)}с" for g in candidate.median_step_gaps)
         factors.append(
             ExplanationFactor(
-                key="step_gaps",
-                label="Интервалы между шагами",
-                value=f"Обычно через {gaps_text}",
+                key="causal_timing",
+                label="Causal timing",
+                value=f"Действия следуют после trigger обычно через {gaps_text}",
                 weight=0.10,
                 score=round(gap_stability, 4),
             )
@@ -108,6 +117,7 @@ def score_pattern(
     why_parts = [
         f"сценарий из {len(candidate.entity_keys)} шагов",
         f"повторился {candidate.support_count} раз",
+        "проходит semantic trigger/action фильтр",
     ]
     if candidate.lift >= options.min_lift:
         why_parts.append(f"lift {candidate.lift:.1f}")
@@ -138,6 +148,8 @@ def passes_quality_gates(
     if scored.base_confidence < options.min_confidence:
         return False
     if candidate.lift < options.min_lift:
+        return False
+    if candidate.semantic_score < 0.75:
         return False
     if scored.support_ratio < options.min_support_ratio:
         return False

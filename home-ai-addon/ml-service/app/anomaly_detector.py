@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 
+from app.device_semantics import classify_event, should_ignore_for_anomaly
 from app.models import AnomalyDetectionOptions, AnomalyItem, AnomalyResponse, EventInput
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,17 @@ def detect_anomalies(
         )
 
     frame = _events_to_frame(events)
+    if frame.empty or len(frame) < options.min_events:
+        return AnomalyResponse(
+            analyzed_event_count=len(events),
+            anomaly_count=0,
+            anomalies=[],
+            options_used={
+                **options.model_dump(by_alias=True),
+                "filteredEventCount": int(len(frame)),
+            },
+        )
+
     candidates: list[_RawAnomaly] = []
     candidates.extend(_detect_hourly_zscore(frame, options))
     candidates.extend(_detect_unusual_hours(frame, options))
@@ -70,24 +82,40 @@ def detect_anomalies(
         analyzed_event_count=len(events),
         anomaly_count=len(anomalies),
         anomalies=anomalies[: options.max_results],
-        options_used=options.model_dump(by_alias=True),
+        options_used={
+            **options.model_dump(by_alias=True),
+            "filteredEventCount": int(len(frame)),
+        },
     )
 
 
 def _events_to_frame(events: list[EventInput]) -> pd.DataFrame:
-    rows = [
-        {
-            "id": event.id,
-            "entity_id": event.entity_id,
-            "old_state": event.old_state,
-            "new_state": event.new_state,
-            "friendly_name": event.friendly_name,
-            "time_fired_utc": event.time_fired_utc,
-            "received_at_utc": event.received_at_utc,
-        }
-        for event in events
-    ]
+    rows: list[dict[str, Any]] = []
+    for event in events:
+        ignore, ignore_reason = should_ignore_for_anomaly(event)
+        if ignore:
+            logger.debug("Ignoring anomaly event %s: %s", event.entity_id, ignore_reason)
+            continue
+        semantics = classify_event(event)
+        rows.append(
+            {
+                "id": event.id,
+                "entity_id": event.entity_id,
+                "old_state": event.old_state,
+                "new_state": event.new_state,
+                "friendly_name": event.friendly_name,
+                "time_fired_utc": event.time_fired_utc,
+                "received_at_utc": event.received_at_utc,
+                "role": semantics.role.value,
+                "intent": semantics.intent.value,
+                "semantic_reason": semantics.reason,
+                "can_trigger": semantics.can_trigger,
+                "can_action": semantics.can_action,
+            }
+        )
     frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
     frame["time_fired_utc"] = pd.to_datetime(frame["time_fired_utc"], utc=True)
     frame["received_at_utc"] = pd.to_datetime(frame["received_at_utc"], utc=True)
     frame["hour"] = frame["time_fired_utc"].dt.hour
@@ -103,9 +131,17 @@ def _detect_hourly_zscore(
     options: AnomalyDetectionOptions,
 ) -> list[_RawAnomaly]:
     results: list[_RawAnomaly] = []
+    frame = _behavior_frame(frame)
+    if frame.empty:
+        return results
     grouped = (
         frame.groupby(["entity_id", "hour_bucket"], as_index=False)
-        .agg(count=("id", "size"), ids=("id", list), label=("label", "first"))
+        .agg(
+            count=("id", "size"),
+            ids=("id", list),
+            label=("label", "first"),
+            semantic_reason=("semantic_reason", "first"),
+        )
         .sort_values("hour_bucket")
     )
     if grouped.empty:
@@ -148,6 +184,8 @@ def _detect_hourly_zscore(
                     detected_at=row["hour_bucket"].to_pydatetime().replace(tzinfo=UTC),
                     related_event_ids=[int(v) for v in row["ids"][:20]],
                     metrics={
+                        "reason": "activity exceeded historical hourly baseline",
+                        "semanticReason": str(row.get("semantic_reason", "")),
                         "zScore": round(float(z_value), 3),
                         "hourlyCount": int(row["count"]),
                         "rollingMean": round(float(rolling_mean.iloc[idx]), 3),
@@ -163,6 +201,9 @@ def _detect_unusual_hours(
     options: AnomalyDetectionOptions,
 ) -> list[_RawAnomaly]:
     results: list[_RawAnomaly] = []
+    frame = _behavior_frame(frame)
+    if frame.empty:
+        return results
     for entity_id, entity_rows in frame.groupby("entity_id"):
         if len(entity_rows) < options.min_events_per_entity:
             continue
@@ -198,6 +239,8 @@ def _detect_unusual_hours(
                     detected_at=row["time_fired_utc"].to_pydatetime(),
                     related_event_ids=[int(row["id"])],
                     metrics={
+                        "reason": "event occurred outside historical time context",
+                        "semanticReason": str(row.get("semantic_reason", "")),
                         "hour": hour,
                         "hourProbability": round(probability, 4),
                         "typicalHours": [int(h) for h in typical_hours],
@@ -212,6 +255,9 @@ def _detect_rolling_frequency(
     options: AnomalyDetectionOptions,
 ) -> list[_RawAnomaly]:
     results: list[_RawAnomaly] = []
+    frame = _behavior_frame(frame)
+    if frame.empty:
+        return results
     window = f"{options.rolling_window_hours}h"
 
     for entity_id, entity_rows in frame.groupby("entity_id"):
@@ -267,6 +313,8 @@ def _detect_rolling_frequency(
                 detected_at=latest_ts.to_pydatetime(),
                 related_event_ids=event_ids,
                 metrics={
+                    "reason": "rolling activity frequency changed significantly",
+                    "semanticReason": str(entity_rows["semantic_reason"].iloc[-1]),
                     "zScore": round(float(z_value), 3),
                     "windowCount": int(latest_count),
                     "rollingMean": round(mean_value, 3),
@@ -293,6 +341,9 @@ def _detect_numeric_spikes(
             continue
 
         values = entity_rows["value"].astype(float)
+        deltas = values.diff().abs().dropna()
+        if not deltas.empty and float(deltas.median()) < options.min_numeric_delta:
+            continue
         rolling_mean = values.rolling(
             window=options.rolling_window_hours,
             min_periods=options.min_hourly_samples,
@@ -330,6 +381,8 @@ def _detect_numeric_spikes(
                 detected_at=latest["time_fired_utc"].to_pydatetime(),
                 related_event_ids=[int(latest["id"])],
                 metrics={
+                    "reason": "numeric value exceeded historical rolling baseline",
+                    "semanticReason": str(latest.get("semantic_reason", "")),
                     "zScore": round(float(z_value), 3),
                     "latestValue": latest_value,
                     "rollingMean": round(mean_value, 3),
@@ -345,6 +398,9 @@ def _detect_isolation_forest(
     options: AnomalyDetectionOptions,
 ) -> list[_RawAnomaly]:
     results: list[_RawAnomaly] = []
+    frame = _behavior_frame(frame)
+    if frame.empty:
+        return results
     features = (
         frame.groupby(["entity_id", "hour_bucket"], as_index=False)
         .agg(
@@ -353,6 +409,7 @@ def _detect_isolation_forest(
             dow=("dow", "first"),
             ids=("id", list),
             label=("label", "first"),
+            semantic_reason=("semantic_reason", "first"),
         )
         .sort_values("hour_bucket")
     )
@@ -393,6 +450,8 @@ def _detect_isolation_forest(
                 detected_at=row["hour_bucket"].to_pydatetime().replace(tzinfo=UTC),
                 related_event_ids=[int(v) for v in row["ids"][:20]],
                 metrics={
+                    "reason": "count/hour/weekday combination is outside behavioral baseline",
+                    "semanticReason": str(row.get("semantic_reason", "")),
                     "isolationScore": round(score, 4),
                     "hourlyCount": int(row["count"]),
                     "hour": int(row["hour"]),
@@ -423,7 +482,7 @@ def _merge_candidates(
 
 
 def _to_item(raw: _RawAnomaly, options: AnomalyDetectionOptions) -> AnomalyItem:
-    severity = _score_to_severity(raw.score, options)
+    severity = _score_to_severity(raw, options)
     detection_id = hashlib.sha256(
         f"{raw.entity_id}|{raw.anomaly_type}|{raw.detected_at.isoformat()}".encode()
     ).hexdigest()[:16]
@@ -442,12 +501,28 @@ def _to_item(raw: _RawAnomaly, options: AnomalyDetectionOptions) -> AnomalyItem:
     )
 
 
-def _score_to_severity(score: float, options: AnomalyDetectionOptions) -> str:
+def _score_to_severity(raw: _RawAnomaly, options: AnomalyDetectionOptions) -> str:
+    score = raw.score
+    security_entity = any(
+        marker in raw.entity_id
+        for marker in ("lock.", "alarm_control_panel.", "smoke", "gas", "moisture", "water")
+    )
+    if security_entity and score >= options.medium_severity_threshold:
+        return SEVERITY_HIGH
     if score >= options.high_severity_threshold:
         return SEVERITY_HIGH
     if score >= options.medium_severity_threshold:
         return SEVERITY_MEDIUM
     return SEVERITY_LOW
+
+
+def _behavior_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    return frame[
+        (frame["can_trigger"].astype(bool) | frame["can_action"].astype(bool))
+        & (frame["role"].isin(["sensor", "actuator", "hybrid"]))
+    ].copy()
 
 
 def _zscore_to_score(z_value: float, threshold: float) -> float:
