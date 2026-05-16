@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
+from app.diagnostics import analyze_diagnostics
 from app.feedback_service import (
     apply_feedback_to_learner,
     get_feedback_learner,
@@ -21,6 +22,7 @@ from app.models import (
     AnomalyDetectRequest,
     AnomalyDetectionOptions,
     AnomalyResponse,
+    DiagnosticsResponse,
     FeedbackRequest,
     FeedbackResetItemsRequest,
     FeedbackResponse,
@@ -171,6 +173,30 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         return result
     except Exception as exc:
         logger.exception("Analysis failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/diagnostics", response_model=DiagnosticsResponse)
+async def diagnostics(request: AnalyzeRequest) -> DiagnosticsResponse:
+    if not request.events:
+        raise HTTPException(status_code=400, detail="events must not be empty")
+
+    events = request.events
+    if len(events) > MAX_EVENTS_PER_REQUEST:
+        events = events[-MAX_EVENTS_PER_REQUEST:]
+
+    options = request.options or AnalyzeOptions()
+    try:
+        result = await asyncio.to_thread(analyze_diagnostics, events, options)
+        logger.info(
+            "Diagnostics on %s events -> eligible=%s recommendations=%s",
+            result.analyzed_event_count,
+            result.eligible_event_count,
+            result.recommendation_count,
+        )
+        return result
+    except Exception as exc:
+        logger.exception("Diagnostics failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

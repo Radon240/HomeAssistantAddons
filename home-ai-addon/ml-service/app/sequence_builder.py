@@ -21,6 +21,8 @@ class ActionToken:
     entity_key: str
     semantics: DeviceSemantics
     occurred_at: datetime
+    area_id: str | None = None
+    area_name: str | None = None
 
 
 def _normalize_dt(value: datetime) -> datetime:
@@ -54,6 +56,8 @@ def tokenize_event(event: EventInput) -> ActionToken | None:
         entity_key=entity_key,
         semantics=semantics,
         occurred_at=_normalize_dt(event.time_fired_utc),
+        area_id=event.area_id,
+        area_name=event.area_name,
     )
 
 

@@ -37,12 +37,14 @@ def score_pattern(
     association = candidate.confidence
     lift_norm = _normalize_lift(candidate.lift, options.min_lift)
     semantic_score = candidate.semantic_score
+    area_score = candidate.area_score
 
     base_confidence = round(
-        0.20 * association
-        + 0.20 * lift_norm
+        0.18 * association
+        + 0.18 * lift_norm
         + 0.15 * min(1.0, support_ratio * 5.0)
         + 0.15 * semantic_score
+        + 0.09 * area_score
         + 0.10 * weekday_score
         + 0.10 * gap_stability
         + 0.15 * cadence_score,
@@ -54,14 +56,14 @@ def score_pattern(
             key="association",
             label="Последовательность",
             value=f"Шаги повторяются вместе в {int(association * 100)}% случаев после префикса",
-            weight=0.20,
+            weight=0.18,
             score=round(association, 4),
         ),
         ExplanationFactor(
             key="lift",
             label="Сила связи (lift)",
             value=f"В {candidate.lift:.1f}× чаще, чем случайное совпадение",
-            weight=0.20,
+            weight=0.18,
             score=round(lift_norm, 4),
         ),
         ExplanationFactor(
@@ -77,6 +79,13 @@ def score_pattern(
             value=candidate.semantic_reason,
             weight=0.15,
             score=round(semantic_score, 4),
+        ),
+        ExplanationFactor(
+            key="area",
+            label="Зоны Home Assistant",
+            value=candidate.area_hint or "Нет area metadata, зона не усиливает рекомендацию",
+            weight=0.09,
+            score=round(area_score, 4),
         ),
     ]
 
@@ -121,6 +130,8 @@ def score_pattern(
     ]
     if candidate.lift >= options.min_lift:
         why_parts.append(f"lift {candidate.lift:.1f}")
+    if candidate.area_hint and candidate.area_score >= 0.75:
+        why_parts.append(candidate.area_hint.lower().rstrip("."))
     if cadence_result.cadence != CADENCE_IRREGULAR:
         why_parts.append(cadence_result.schedule_hint.lower())
     elif candidate.weekday_hint:
@@ -150,6 +161,8 @@ def passes_quality_gates(
     if candidate.lift < options.min_lift:
         return False
     if candidate.semantic_score < 0.75:
+        return False
+    if candidate.area_score < 0.35:
         return False
     if scored.support_ratio < options.min_support_ratio:
         return False

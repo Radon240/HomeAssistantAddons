@@ -21,6 +21,12 @@ export function DashboardPage() {
             <Link to="/feedback">Обучение</Link> — сброс и управление отзывами ML-модели.
           </li>
           <li>
+            <Link to="/diagnostics">Диагностика ML</Link> — причины фильтрации и подавления кандидатов.
+          </li>
+          <li>
+            <Link to="/semantic-overrides">Semantic Overrides</Link> — ручные роли и capabilities для entity.
+          </li>
+          <li>
             <Link to="/anomalies">Аномалии</Link> — необычная активность и отклонения.
           </li>
           <li>

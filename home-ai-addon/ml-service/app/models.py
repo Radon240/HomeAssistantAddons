@@ -19,6 +19,8 @@ class EventInput(BaseModel):
     unit_of_measurement: str | None = Field(default=None, alias="unitOfMeasurement")
     entity_category: str | None = Field(default=None, alias="entityCategory")
     supported_features: int | None = Field(default=None, alias="supportedFeatures")
+    area_id: str | None = Field(default=None, alias="areaId")
+    area_name: str | None = Field(default=None, alias="areaName")
 
     model_config = {"populate_by_name": True}
 
@@ -65,6 +67,8 @@ class SequenceStep(BaseModel):
     entity_id: str = Field(alias="entityId")
     new_state: str | None = Field(default=None, alias="newState")
     friendly_name: str | None = Field(default=None, alias="friendlyName")
+    area_id: str | None = Field(default=None, alias="areaId")
+    area_name: str | None = Field(default=None, alias="areaName")
 
     model_config = {"populate_by_name": True}
 
@@ -199,6 +203,7 @@ class Recommendation(BaseModel):
         default_factory=list, alias="medianStepGapsSeconds"
     )
     weekday_hint: str | None = Field(default=None, alias="weekdayHint")
+    area_hint: str | None = Field(default=None, alias="areaHint")
     suggested_automation: SuggestedAutomation = Field(alias="suggestedAutomation")
 
     model_config = {"populate_by_name": True}
@@ -210,6 +215,29 @@ class AnalyzeResponse(BaseModel):
     pattern_candidates: int = Field(alias="patternCandidates")
     feedback_training_samples: int = Field(default=0, alias="feedbackTrainingSamples")
     recommendations: list[Recommendation]
+    options_used: dict[str, Any] = Field(alias="optionsUsed")
+
+    model_config = {"populate_by_name": True}
+
+
+class DiagnosticsCounter(BaseModel):
+    key: str
+    count: int
+
+
+class DiagnosticsResponse(BaseModel):
+    analyzed_event_count: int = Field(alias="analyzedEventCount")
+    eligible_event_count: int = Field(alias="eligibleEventCount")
+    session_count: int = Field(alias="sessionCount")
+    raw_sequence_candidate_count: int = Field(alias="rawSequenceCandidateCount")
+    semantic_rejected_candidate_count: int = Field(alias="semanticRejectedCandidateCount")
+    sensor_to_sensor_candidate_count: int = Field(alias="sensorToSensorCandidateCount")
+    meaningful_candidate_count: int = Field(alias="meaningfulCandidateCount")
+    quality_filtered_candidate_count: int = Field(alias="qualityFilteredCandidateCount")
+    recommendation_count: int = Field(alias="recommendationCount")
+    filter_reasons: list[DiagnosticsCounter] = Field(alias="filterReasons")
+    semantic_roles: list[DiagnosticsCounter] = Field(alias="semanticRoles")
+    semantic_intents: list[DiagnosticsCounter] = Field(alias="semanticIntents")
     options_used: dict[str, Any] = Field(alias="optionsUsed")
 
     model_config = {"populate_by_name": True}

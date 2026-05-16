@@ -100,6 +100,8 @@ def _to_recommendation(
             entity_id=token.entity_id,
             new_state=token.new_state,
             friendly_name=token.friendly_name,
+            area_id=token.area_id,
+            area_name=token.area_name,
         )
         for token in candidate.tokens
     ]
@@ -131,6 +133,7 @@ def _to_recommendation(
         f"Сценарий из {len(steps)} шагов повторился {candidate.support_count} раз(а). "
         f"Расписание: {schedule_part}. "
         f"Уверенность: {int(scored.base_confidence * 100)}%, lift: {candidate.lift:.1f}."
+        f" {candidate.area_hint or 'Area metadata не задана.'}"
         f"{gap_part}"
     )
 
@@ -179,6 +182,7 @@ def _to_recommendation(
         explanation_factors=list(scored.explanation_factors),
         median_step_gaps_seconds=list(candidate.median_step_gaps),
         weekday_hint=candidate.weekday_hint,
+        area_hint=candidate.area_hint,
         suggested_automation=SuggestedAutomation(
             trigger_entity_id=trigger.entity_id,
             trigger_to_state=trigger.new_state,

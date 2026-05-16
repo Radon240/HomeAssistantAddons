@@ -5,6 +5,8 @@ export interface SequenceStep {
   entityId: string;
   newState: string | null;
   friendlyName: string | null;
+  areaId: string | null;
+  areaName: string | null;
 }
 
 export interface SuggestedAutomation {
@@ -44,6 +46,7 @@ export interface Recommendation {
   explanationFactors: ExplanationFactor[];
   medianStepGapsSeconds: number[];
   weekdayHint: string | null;
+  areaHint: string | null;
   suggestedAutomation: SuggestedAutomation;
 }
 
@@ -58,6 +61,29 @@ export interface RecommendationsResponse {
   message: string | null;
   analysisExcludeEntities: string[];
   analysisExcludeDomains: string[];
+}
+
+export interface DiagnosticsCounter {
+  key: string;
+  count: number;
+}
+
+export interface RecommendationDiagnosticsResponse {
+  analyzedEventCount: number;
+  eligibleEventCount: number;
+  sessionCount: number;
+  rawSequenceCandidateCount: number;
+  semanticRejectedCandidateCount: number;
+  sensorToSensorCandidateCount: number;
+  meaningfulCandidateCount: number;
+  qualityFilteredCandidateCount: number;
+  recommendationCount: number;
+  scannedEventCount: number;
+  excludedEventCount: number;
+  filterReasons: DiagnosticsCounter[];
+  semanticRoles: DiagnosticsCounter[];
+  semanticIntents: DiagnosticsCounter[];
+  message: string | null;
 }
 
 export interface AnalysisExclusionsResponse {
@@ -123,6 +149,10 @@ export interface ResetFeedbackItemsRequest {
 
 export function fetchRecommendations(): Promise<RecommendationsResponse> {
   return fetchJson<RecommendationsResponse>("/api/recommendations");
+}
+
+export function fetchRecommendationDiagnostics(): Promise<RecommendationDiagnosticsResponse> {
+  return fetchJson<RecommendationDiagnosticsResponse>("/api/recommendations/diagnostics");
 }
 
 export function submitRecommendationFeedback(

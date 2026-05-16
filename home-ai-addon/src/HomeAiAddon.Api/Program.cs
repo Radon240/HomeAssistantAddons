@@ -4,6 +4,7 @@ using HomeAiAddon.Api.Data;
 using HomeAiAddon.Api.Health;
 using HomeAiAddon.Api.HomeAssistant;
 using HomeAiAddon.Api.Options;
+using HomeAiAddon.Api.Semantic;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -100,6 +101,7 @@ try
     builder.Services.AddScoped<AnomalyDetectionService>();
     builder.Services.AddSingleton<IAnalysisExclusionStore, AnalysisExclusionStore>();
     builder.Services.AddSingleton<AnalysisEntityFilter>();
+    builder.Services.AddSingleton<ISemanticOverrideStore, SemanticOverrideStore>();
 
     builder.Services.AddSingleton<HomeAssistantConnectionState>();
     builder.Services.AddSingleton<RuntimeMetrics>();

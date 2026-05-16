@@ -76,18 +76,7 @@ public sealed class RecommendationsController(
             var entityMetadata = await LoadEntityMetadataAsync(entitiesService, cancellationToken);
             var request = new AnalyzeRequestPayload(
                 batch.Events.Select(e => ToAnalyzeEventPayload(e, entityMetadata)).ToList(),
-                new AnalyzeOptionsPayload(
-                    opts.MinSupport,
-                    opts.MinConfidence,
-                    opts.MinCadenceConfidence,
-                    opts.RequirePeriodic,
-                    opts.MaxGapSeconds,
-                    opts.MaxSequenceLength,
-                    opts.LookbackHours,
-                    opts.FeedbackDismissDays,
-                    opts.MinLift,
-                    opts.MinSupportRatio,
-                    opts.MaxStepGapSeconds));
+                BuildAnalyzeOptionsPayload(opts));
 
             var result = await analysisClient.AnalyzeAsync(request, cancellationToken);
             return Ok(new RecommendationsResponse(
@@ -119,6 +108,78 @@ public sealed class RecommendationsController(
         catch (Exception ex)
         {
             logger.LogError(ex, "Recommendations failed");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("diagnostics")]
+    public async Task<ActionResult<RecommendationDiagnosticsResponse>> GetDiagnostics(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!await analysisClient.IsHealthyAsync(cancellationToken))
+            {
+                return StatusCode(503, new { error = "ML service unavailable" });
+            }
+
+            var opts = options.Value;
+            var batch = await store.GetRecentForAnalysisAsync(
+                opts.EventLimit,
+                analysisEntityFilter.ShouldInclude,
+                cancellationToken);
+
+            if (batch.Events.Count == 0)
+            {
+                return Ok(new RecommendationDiagnosticsResponse(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    batch.ScannedCount,
+                    batch.ExcludedCount,
+                    [],
+                    [],
+                    [],
+                    "Недостаточно событий для диагностики."));
+            }
+
+            var entityMetadata = await LoadEntityMetadataAsync(entitiesService, cancellationToken);
+            var request = new AnalyzeRequestPayload(
+                batch.Events.Select(e => ToAnalyzeEventPayload(e, entityMetadata)).ToList(),
+                BuildAnalyzeOptionsPayload(opts));
+
+            var result = await analysisClient.AnalyzeDiagnosticsAsync(request, cancellationToken);
+            return Ok(new RecommendationDiagnosticsResponse(
+                result.AnalyzedEventCount,
+                result.EligibleEventCount,
+                result.SessionCount,
+                result.RawSequenceCandidateCount,
+                result.SemanticRejectedCandidateCount,
+                result.SensorToSensorCandidateCount,
+                result.MeaningfulCandidateCount,
+                result.QualityFilteredCandidateCount,
+                result.RecommendationCount,
+                batch.ScannedCount,
+                batch.ExcludedCount,
+                result.FilterReasons,
+                result.SemanticRoles,
+                result.SemanticIntents,
+                null));
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "ML diagnostics request failed");
+            return StatusCode(503, new { error = "ML service unavailable", detail = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Recommendation diagnostics failed");
             return StatusCode(500, new { error = ex.Message });
         }
     }
@@ -312,8 +373,24 @@ public sealed class RecommendationsController(
             meta?.DeviceClass,
             meta?.UnitOfMeasurement,
             meta?.EntityCategory,
-            meta?.SupportedFeatures);
+            meta?.SupportedFeatures,
+            meta?.AreaId,
+            meta?.AreaName);
     }
+
+    private static AnalyzeOptionsPayload BuildAnalyzeOptionsPayload(BehaviorAnalysisOptions opts) =>
+        new(
+            opts.MinSupport,
+            opts.MinConfidence,
+            opts.MinCadenceConfidence,
+            opts.RequirePeriodic,
+            opts.MaxGapSeconds,
+            opts.MaxSequenceLength,
+            opts.LookbackHours,
+            opts.FeedbackDismissDays,
+            opts.MinLift,
+            opts.MinSupportRatio,
+            opts.MaxStepGapSeconds);
 
     private static IReadOnlyList<FeedbackCounterEntry> ToEntries(IReadOnlyDictionary<string, int> values) =>
         values
@@ -377,3 +454,20 @@ public sealed record RecommendationsResponse(
     string? Message,
     IReadOnlyList<string> AnalysisExcludeEntities,
     IReadOnlyList<string> AnalysisExcludeDomains);
+
+public sealed record RecommendationDiagnosticsResponse(
+    int AnalyzedEventCount,
+    int EligibleEventCount,
+    int SessionCount,
+    int RawSequenceCandidateCount,
+    int SemanticRejectedCandidateCount,
+    int SensorToSensorCandidateCount,
+    int MeaningfulCandidateCount,
+    int QualityFilteredCandidateCount,
+    int RecommendationCount,
+    int ScannedEventCount,
+    int ExcludedEventCount,
+    IReadOnlyList<DiagnosticsCounterPayload> FilterReasons,
+    IReadOnlyList<DiagnosticsCounterPayload> SemanticRoles,
+    IReadOnlyList<DiagnosticsCounterPayload> SemanticIntents,
+    string? Message);

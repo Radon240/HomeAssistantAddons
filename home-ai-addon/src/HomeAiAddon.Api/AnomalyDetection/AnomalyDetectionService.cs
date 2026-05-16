@@ -130,7 +130,9 @@ public sealed class AnomalyDetectionService(
             meta?.DeviceClass,
             meta?.UnitOfMeasurement,
             meta?.EntityCategory,
-            meta?.SupportedFeatures);
+            meta?.SupportedFeatures,
+            meta?.AreaId,
+            meta?.AreaName);
     }
 }
 

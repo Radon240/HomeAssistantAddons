@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
+from typing import Any
 
 from app.models import EventInput
 
@@ -148,6 +152,10 @@ ACTION_DEVICE_CLASSES = {
     "cool",
 }
 
+OVERRIDES_PATH = Path(os.environ.get("SEMANTIC_OVERRIDES_PATH", "/data/semantic-overrides.json"))
+_OVERRIDES_MTIME: float | None = None
+_OVERRIDES_CACHE: dict[str, dict[str, Any]] = {}
+
 
 @dataclass(frozen=True)
 class DeviceSemantics:
@@ -185,7 +193,7 @@ def classify_event(event: EventInput) -> DeviceSemantics:
     intent = _classify_intent(domain, role, can_trigger, can_action, noisy, system_event)
     reason = _build_reason(role, intent, can_trigger, can_action, noisy, system_event, significant)
 
-    return DeviceSemantics(
+    semantics = DeviceSemantics(
         entity_id=entity_id,
         domain=domain,
         role=role,
@@ -197,6 +205,7 @@ def classify_event(event: EventInput) -> DeviceSemantics:
         significant=significant,
         reason=reason,
     )
+    return _apply_override(semantics)
 
 
 def is_meaningful_automation(semantics: list[DeviceSemantics]) -> tuple[bool, str]:
@@ -254,6 +263,78 @@ def _classify_role(domain: str, text: str, device_class: str, entity_category: s
     if device_class in MEANINGFUL_BINARY_HINTS or any(hint in text for hint in MEANINGFUL_BINARY_HINTS):
         return DeviceRole.SENSOR
     return DeviceRole.READ_ONLY
+
+
+def _apply_override(semantics: DeviceSemantics) -> DeviceSemantics:
+    override = _load_overrides().get(semantics.entity_id)
+    if not override:
+        return semantics
+
+    role = _enum_override(DeviceRole, override.get("role"), semantics.role)
+    intent = _enum_override(EventIntent, override.get("intent"), semantics.intent)
+    can_trigger = _bool_override(override.get("canTrigger"), semantics.can_trigger)
+    can_action = _bool_override(override.get("canAction"), semantics.can_action)
+    noisy = _bool_override(override.get("noisy"), semantics.noisy)
+    system_event = _bool_override(override.get("systemEvent"), semantics.system_event)
+    significant = _bool_override(override.get("significant"), semantics.significant)
+    reason = str(override.get("reason") or f"semantic override: {semantics.reason}")
+
+    return DeviceSemantics(
+        entity_id=semantics.entity_id,
+        domain=semantics.domain,
+        role=role,
+        intent=intent,
+        can_trigger=can_trigger,
+        can_action=can_action,
+        noisy=noisy,
+        system_event=system_event,
+        significant=significant,
+        reason=reason,
+    )
+
+
+def _load_overrides() -> dict[str, dict[str, Any]]:
+    global _OVERRIDES_MTIME, _OVERRIDES_CACHE
+
+    try:
+        stat = OVERRIDES_PATH.stat()
+    except FileNotFoundError:
+        _OVERRIDES_MTIME = None
+        _OVERRIDES_CACHE = {}
+        return _OVERRIDES_CACHE
+    except OSError:
+        return _OVERRIDES_CACHE
+
+    if _OVERRIDES_MTIME == stat.st_mtime:
+        return _OVERRIDES_CACHE
+
+    try:
+        payload = json.loads(OVERRIDES_PATH.read_text(encoding="utf-8"))
+        entities = payload.get("entities", {}) if isinstance(payload, dict) else {}
+        _OVERRIDES_CACHE = {
+            str(entity_id): override
+            for entity_id, override in entities.items()
+            if isinstance(override, dict)
+        }
+        _OVERRIDES_MTIME = stat.st_mtime
+    except (OSError, json.JSONDecodeError):
+        _OVERRIDES_CACHE = {}
+        _OVERRIDES_MTIME = stat.st_mtime
+
+    return _OVERRIDES_CACHE
+
+
+def _enum_override(enum_type: type[StrEnum], raw: Any, current: Any) -> Any:
+    if raw is None:
+        return current
+    try:
+        return enum_type(str(raw))
+    except ValueError:
+        return current
+
+
+def _bool_override(raw: Any, current: bool) -> bool:
+    return raw if isinstance(raw, bool) else current
 
 
 def _classify_intent(

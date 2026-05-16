@@ -90,6 +90,34 @@ public sealed class BehaviorAnalysisClient(
         return payload ?? throw new InvalidOperationException("ML service returned empty feedback response.");
     }
 
+    public async Task<DiagnosticsResponsePayload> AnalyzeDiagnosticsAsync(
+        AnalyzeRequestPayload request,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            "/api/v1/diagnostics",
+            request,
+            JsonOptions,
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            logger.LogWarning(
+                "ML diagnostics failed: {StatusCode} {Body}",
+                (int)response.StatusCode,
+                body);
+            throw new HttpRequestException(
+                $"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}). Body: {body}");
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<DiagnosticsResponsePayload>(
+            JsonOptions,
+            cancellationToken);
+
+        return payload ?? throw new InvalidOperationException("ML service returned empty diagnostics response.");
+    }
+
     public async Task<FeedbackStatePayload> GetFeedbackStateAsync(
         CancellationToken cancellationToken = default)
     {

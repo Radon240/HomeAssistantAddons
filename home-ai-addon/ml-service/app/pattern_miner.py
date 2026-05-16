@@ -32,6 +32,8 @@ class PatternCandidate:
     tokens: tuple[ActionToken, ...]
     semantic_score: float = 0.0
     semantic_reason: str = ""
+    area_score: float = 0.5
+    area_hint: str | None = None
     occurrence_times: tuple[datetime, ...] = field(default_factory=tuple)
     median_step_gaps: tuple[float, ...] = field(default_factory=tuple)
     weekday_concentration: float = 0.0
@@ -232,6 +234,7 @@ def mine_patterns(
         if not semantic_ok:
             continue
         semantic_score = _semantic_score(row["tokens"])
+        area_score, area_hint = _area_context(row["tokens"])
 
         candidates.append(
             PatternCandidate(
@@ -245,6 +248,8 @@ def mine_patterns(
                 tokens=row["tokens"],
                 semantic_score=semantic_score,
                 semantic_reason=semantic_reason,
+                area_score=area_score,
+                area_hint=area_hint,
                 occurrence_times=times,
                 median_step_gaps=median_gaps,
                 weekday_concentration=weekday_score,
@@ -271,6 +276,8 @@ def mine_patterns(
                 tokens=candidate.tokens,
                 semantic_score=candidate.semantic_score,
                 semantic_reason=candidate.semantic_reason,
+                area_score=candidate.area_score,
+                area_hint=candidate.area_hint,
                 occurrence_times=candidate.occurrence_times,
                 median_step_gaps=candidate.median_step_gaps,
                 weekday_concentration=candidate.weekday_concentration,
@@ -279,7 +286,7 @@ def mine_patterns(
         )
 
     enriched.sort(
-        key=lambda c: (c.lift, c.confidence, c.support_count, c.frequency_score),
+        key=lambda c: (c.lift, c.area_score, c.confidence, c.support_count, c.frequency_score),
         reverse=True,
     )
     return _drop_subsequence_duplicates(enriched)
@@ -324,6 +331,23 @@ def _semantic_score(tokens: tuple[ActionToken, ...]) -> float:
     if trigger.intent.value in {"user_action", "environment_trigger"}:
         score += 0.05
     return round(min(1.0, score), 4)
+
+
+def _area_context(tokens: tuple[ActionToken, ...]) -> tuple[float, str | None]:
+    named_areas = [token.area_name or token.area_id for token in tokens if token.area_name or token.area_id]
+    if len(named_areas) < 2:
+        return 0.5, None
+
+    first = named_areas[0]
+    same_area_count = sum(1 for area in named_areas if area == first)
+    if same_area_count == len(named_areas):
+        return 1.0, f"Все шаги находятся в зоне «{first}»."
+
+    unique = sorted(set(named_areas))
+    if len(unique) <= 2:
+        return 0.75, "Сценарий связывает соседние зоны: " + ", ".join(unique) + "."
+
+    return 0.35, "Сценарий затрагивает много разных зон: " + ", ".join(unique[:4]) + "."
 
 
 def _is_contiguous_subsequence(short: tuple[str, ...], long: tuple[str, ...]) -> bool:

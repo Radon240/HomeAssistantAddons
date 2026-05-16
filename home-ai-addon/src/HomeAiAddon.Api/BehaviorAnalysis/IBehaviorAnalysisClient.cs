@@ -6,6 +6,10 @@ public interface IBehaviorAnalysisClient
         AnalyzeRequestPayload request,
         CancellationToken cancellationToken = default);
 
+    Task<DiagnosticsResponsePayload> AnalyzeDiagnosticsAsync(
+        AnalyzeRequestPayload request,
+        CancellationToken cancellationToken = default);
+
     Task<bool> IsHealthyAsync(CancellationToken cancellationToken = default);
 
     Task<FeedbackResponsePayload> SubmitFeedbackAsync(

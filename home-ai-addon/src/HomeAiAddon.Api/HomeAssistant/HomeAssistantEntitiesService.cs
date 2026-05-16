@@ -16,6 +16,9 @@ public sealed class HomeAssistantEntitiesService(
 
         var statesUri = HomeAssistantUriHelper.CombineRestPath(endpoints.RestApiBase, "states");
         var client = httpClientFactory.CreateClient("HomeAssistant");
+        var entityRegistry = await LoadEntityRegistryAsync(client, endpoints.RestApiBase, cancellationToken);
+        var deviceAreas = await LoadDeviceAreasAsync(client, endpoints.RestApiBase, cancellationToken);
+        var areaNames = await LoadAreaNamesAsync(client, endpoints.RestApiBase, cancellationToken);
 
         using var response = await client.GetAsync(statesUri, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
@@ -74,6 +77,18 @@ public sealed class HomeAssistantEntitiesService(
             var domain = entityId.Contains('.', StringComparison.Ordinal)
                 ? entityId[..entityId.IndexOf('.')]
                 : entityId;
+            entityRegistry.TryGetValue(entityId, out var registryItem);
+            var areaId = registryItem?.AreaId;
+            if (string.IsNullOrWhiteSpace(areaId) &&
+                !string.IsNullOrWhiteSpace(registryItem?.DeviceId) &&
+                deviceAreas.TryGetValue(registryItem.DeviceId, out var deviceAreaId))
+            {
+                areaId = deviceAreaId;
+            }
+
+            var areaName = !string.IsNullOrWhiteSpace(areaId) && areaNames.TryGetValue(areaId, out var name)
+                ? name
+                : areaId;
 
             list.Add(new HomeAssistantEntityDto(
                 entityId,
@@ -83,7 +98,9 @@ public sealed class HomeAssistantEntitiesService(
                 deviceClass,
                 unitOfMeasurement,
                 entityCategory,
-                supportedFeatures));
+                supportedFeatures,
+                areaId,
+                areaName));
         }
 
         return list.OrderBy(e => e.EntityId, StringComparer.OrdinalIgnoreCase).ToList();
@@ -95,6 +112,110 @@ public sealed class HomeAssistantEntitiesService(
             ? prop.GetString()
             : null;
     }
+
+    private async Task<IReadOnlyDictionary<string, EntityRegistryItem>> LoadEntityRegistryAsync(
+        HttpClient client,
+        Uri restApiBase,
+        CancellationToken cancellationToken)
+    {
+        var uri = HomeAssistantUriHelper.CombineRestPath(restApiBase, "config/entity_registry");
+        using var doc = await TryGetJsonArrayAsync(client, uri, cancellationToken);
+        if (doc is null)
+        {
+            return new Dictionary<string, EntityRegistryItem>();
+        }
+
+        var map = new Dictionary<string, EntityRegistryItem>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in doc.RootElement.EnumerateArray())
+        {
+            var entityId = ReadString(item, "entity_id");
+            if (string.IsNullOrWhiteSpace(entityId))
+            {
+                continue;
+            }
+
+            map[entityId] = new EntityRegistryItem(ReadString(item, "area_id"), ReadString(item, "device_id"));
+        }
+
+        return map;
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> LoadDeviceAreasAsync(
+        HttpClient client,
+        Uri restApiBase,
+        CancellationToken cancellationToken)
+    {
+        var uri = HomeAssistantUriHelper.CombineRestPath(restApiBase, "config/device_registry");
+        using var doc = await TryGetJsonArrayAsync(client, uri, cancellationToken);
+        if (doc is null)
+        {
+            return new Dictionary<string, string>();
+        }
+
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in doc.RootElement.EnumerateArray())
+        {
+            var id = ReadString(item, "id");
+            var areaId = ReadString(item, "area_id");
+            if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(areaId))
+            {
+                map[id] = areaId;
+            }
+        }
+
+        return map;
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> LoadAreaNamesAsync(
+        HttpClient client,
+        Uri restApiBase,
+        CancellationToken cancellationToken)
+    {
+        var uri = HomeAssistantUriHelper.CombineRestPath(restApiBase, "config/area_registry");
+        using var doc = await TryGetJsonArrayAsync(client, uri, cancellationToken);
+        if (doc is null)
+        {
+            return new Dictionary<string, string>();
+        }
+
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in doc.RootElement.EnumerateArray())
+        {
+            var id = ReadString(item, "area_id") ?? ReadString(item, "id");
+            var name = ReadString(item, "name");
+            if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(name))
+            {
+                map[id] = name;
+            }
+        }
+
+        return map;
+    }
+
+    private async Task<JsonDocument?> TryGetJsonArrayAsync(
+        HttpClient client,
+        Uri uri,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await client.GetAsync(uri, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogDebug("Registry endpoint unavailable: {Status} {Uri}", (int)response.StatusCode, uri);
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            return doc.RootElement.ValueKind == JsonValueKind.Array ? doc : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            logger.LogDebug(ex, "Registry endpoint failed: {Uri}", uri);
+            return null;
+        }
+    }
 }
 
 public sealed record HomeAssistantEntityDto(
@@ -105,4 +226,8 @@ public sealed record HomeAssistantEntityDto(
     string? DeviceClass,
     string? UnitOfMeasurement,
     string? EntityCategory,
-    long? SupportedFeatures);
+    long? SupportedFeatures,
+    string? AreaId,
+    string? AreaName);
+
+internal sealed record EntityRegistryItem(string? AreaId, string? DeviceId);

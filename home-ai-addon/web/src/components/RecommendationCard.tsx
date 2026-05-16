@@ -204,6 +204,11 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
           <strong style={{ fontWeight: 600 }}>Почему предложено:</strong> {item.whyGenerated}
         </p>
       ) : null}
+      {item.areaHint ? (
+        <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
+          <strong style={{ fontWeight: 600 }}>Зона:</strong> {item.areaHint}
+        </p>
+      ) : null}
       <p className="muted" style={{ margin: "8px 0" }}>
         {item.description}
       </p>
@@ -228,7 +233,10 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
         {item.sequence.map((step, index) => (
           <li key={`${item.id}-${index}`}>
             <span>{step.label}</span>
-            <span className="muted mono">{step.entityId}</span>
+            <span className="muted mono">
+              {step.entityId}
+              {step.areaName ? ` · ${step.areaName}` : ""}
+            </span>
           </li>
         ))}
       </ol>

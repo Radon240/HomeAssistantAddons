@@ -16,7 +16,9 @@ public sealed record AnalyzeEventPayload(
     string? DeviceClass = null,
     string? UnitOfMeasurement = null,
     string? EntityCategory = null,
-    long? SupportedFeatures = null);
+    long? SupportedFeatures = null,
+    string? AreaId = null,
+    string? AreaName = null);
 
 public sealed record AnalyzeOptionsPayload(
     int MinSupport,
@@ -44,6 +46,23 @@ public sealed record AnalyzeResponsePayload(
     int PatternCandidates,
     int FeedbackTrainingSamples,
     IReadOnlyList<RecommendationPayload> Recommendations,
+    IReadOnlyDictionary<string, object>? OptionsUsed);
+
+public sealed record DiagnosticsCounterPayload(string Key, int Count);
+
+public sealed record DiagnosticsResponsePayload(
+    int AnalyzedEventCount,
+    int EligibleEventCount,
+    int SessionCount,
+    int RawSequenceCandidateCount,
+    int SemanticRejectedCandidateCount,
+    int SensorToSensorCandidateCount,
+    int MeaningfulCandidateCount,
+    int QualityFilteredCandidateCount,
+    int RecommendationCount,
+    IReadOnlyList<DiagnosticsCounterPayload> FilterReasons,
+    IReadOnlyList<DiagnosticsCounterPayload> SemanticRoles,
+    IReadOnlyList<DiagnosticsCounterPayload> SemanticIntents,
     IReadOnlyDictionary<string, object>? OptionsUsed);
 
 public sealed record RecommendationPayload(
@@ -105,7 +124,9 @@ public sealed record SequenceStepPayload(
     string Label,
     string EntityId,
     string? NewState,
-    string? FriendlyName);
+    string? FriendlyName,
+    string? AreaId,
+    string? AreaName);
 
 public sealed record SuggestedAutomationPayload(
     string TriggerEntityId,
