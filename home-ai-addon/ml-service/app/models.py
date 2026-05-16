@@ -72,6 +72,9 @@ class SequenceStep(BaseModel):
     friendly_name: str | None = Field(default=None, alias="friendlyName")
     area_id: str | None = Field(default=None, alias="areaId")
     area_name: str | None = Field(default=None, alias="areaName")
+    context_id: str | None = Field(default=None, alias="contextId")
+    context_user_id: str | None = Field(default=None, alias="contextUserId")
+    context_parent_id: str | None = Field(default=None, alias="contextParentId")
     origin: str | None = None
     intent_score: float = Field(default=0.0, alias="intentScore")
     state_importance: float = Field(default=0.0, alias="stateImportance")
@@ -240,6 +243,7 @@ class DiagnosticsResponse(BaseModel):
     raw_sequence_candidate_count: int = Field(alias="rawSequenceCandidateCount")
     semantic_rejected_candidate_count: int = Field(alias="semanticRejectedCandidateCount")
     sensor_to_sensor_candidate_count: int = Field(alias="sensorToSensorCandidateCount")
+    automation_generated_candidate_count: int = Field(alias="automationGeneratedCandidateCount")
     meaningful_candidate_count: int = Field(alias="meaningfulCandidateCount")
     quality_filtered_candidate_count: int = Field(alias="qualityFilteredCandidateCount")
     recommendation_count: int = Field(alias="recommendationCount")

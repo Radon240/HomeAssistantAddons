@@ -23,6 +23,9 @@ class ActionToken:
     semantics: DeviceSemantics
     occurred_at: datetime
     intelligence: EventIntelligence
+    context_id: str | None = None
+    context_user_id: str | None = None
+    context_parent_id: str | None = None
     area_id: str | None = None
     area_name: str | None = None
 
@@ -62,6 +65,9 @@ def tokenize_event(event: EventInput) -> ActionToken | None:
         semantics=semantics,
         occurred_at=_normalize_dt(event.time_fired_utc),
         intelligence=intelligence,
+        context_id=event.context_id,
+        context_user_id=event.context_user_id,
+        context_parent_id=event.context_parent_id,
         area_id=event.area_id,
         area_name=event.area_name,
     )
@@ -143,6 +149,9 @@ def sessions_to_dataframe(sessions: list[list[ActionToken]]) -> pd.DataFrame:
                     "entity_id": token.entity_id,
                     "new_state": token.new_state or "",
                     "friendly_name": token.friendly_name or "",
+                    "context_id": token.context_id or "",
+                    "context_user_id": token.context_user_id or "",
+                    "context_parent_id": token.context_parent_id or "",
                     "origin": token.intelligence.origin.value,
                     "event_weight": int(token.intelligence.event_weight * 1000),
                 }

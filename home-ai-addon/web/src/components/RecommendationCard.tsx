@@ -242,6 +242,11 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
               state {Math.round((step.stateImportance ?? 0) * 100)}% · weight{" "}
               {Math.round((step.eventWeight ?? 0) * 100)}%
             </span>
+            {step.contextParentId ? (
+              <span className="muted mono" style={{ fontSize: 11 }}>
+                parent context: {step.contextParentId}
+              </span>
+            ) : null}
             {step.intelligenceExplanation ? (
               <span className="muted" style={{ fontSize: 11 }}>
                 {step.intelligenceExplanation}

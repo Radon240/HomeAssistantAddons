@@ -7,6 +7,9 @@ export interface SequenceStep {
   friendlyName: string | null;
   areaId: string | null;
   areaName: string | null;
+  contextId: string | null;
+  contextUserId: string | null;
+  contextParentId: string | null;
   origin: string | null;
   intentScore: number;
   stateImportance: number;
@@ -80,6 +83,7 @@ export interface RecommendationDiagnosticsResponse {
   rawSequenceCandidateCount: number;
   semanticRejectedCandidateCount: number;
   sensorToSensorCandidateCount: number;
+  automationGeneratedCandidateCount: number;
   meaningfulCandidateCount: number;
   qualityFilteredCandidateCount: number;
   recommendationCount: number;

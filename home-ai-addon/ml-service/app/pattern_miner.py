@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from statistics import median
@@ -35,6 +35,8 @@ class PatternCandidate:
     weighted_confidence: float = 0.0
     intent_score: float = 0.0
     automation_origin_ratio: float = 0.0
+    existing_automation_score: float = 0.0
+    existing_automation_reason: str = ""
     negative_evidence: float = 0.0
     semantic_score: float = 0.0
     semantic_reason: str = ""
@@ -254,6 +256,7 @@ def mine_patterns(
         area_score, area_hint = _area_context(row["tokens"])
         intent_score = _intent_score(row["tokens"])
         automation_origin_ratio = _automation_origin_ratio(row["tokens"])
+        existing_score, existing_reason = _existing_automation_score(row["tokens"])
 
         candidates.append(
             PatternCandidate(
@@ -269,6 +272,8 @@ def mine_patterns(
                 weighted_confidence=round(weighted_confidence, 4),
                 intent_score=intent_score,
                 automation_origin_ratio=automation_origin_ratio,
+                existing_automation_score=existing_score,
+                existing_automation_reason=existing_reason,
                 negative_evidence=round(negative_evidence, 4),
                 semantic_score=semantic_score,
                 semantic_reason=semantic_reason,
@@ -302,6 +307,8 @@ def mine_patterns(
                 weighted_confidence=candidate.weighted_confidence,
                 intent_score=candidate.intent_score,
                 automation_origin_ratio=candidate.automation_origin_ratio,
+                existing_automation_score=candidate.existing_automation_score,
+                existing_automation_reason=candidate.existing_automation_reason,
                 negative_evidence=candidate.negative_evidence,
                 semantic_score=candidate.semantic_score,
                 semantic_reason=candidate.semantic_reason,
@@ -386,6 +393,33 @@ def _automation_origin_ratio(tokens: tuple[ActionToken, ...]) -> float:
         if token.intelligence.origin.value in {"automation", "cascade"}
     )
     return round(generated / len(tokens), 4)
+
+
+def _existing_automation_score(tokens: tuple[ActionToken, ...]) -> tuple[float, str]:
+    if len(tokens) < 2:
+        return 0.0, ""
+
+    trigger = tokens[0]
+    actions = tokens[1:]
+    trigger_context = trigger.context_id
+    if trigger_context:
+        propagated = sum(1 for token in actions if token.context_parent_id == trigger_context)
+        if propagated:
+            score = propagated / len(actions)
+            return round(score, 4), "Action-события имеют parent_id trigger context."
+
+    parent_ids = [token.context_parent_id for token in tokens if token.context_parent_id]
+    if parent_ids:
+        parent, count = Counter(parent_ids).most_common(1)[0]
+        score = count / len(tokens)
+        if score >= 0.5:
+            return round(score, 4), f"События связаны одним automation parent context {parent}."
+
+    automation_ratio = _automation_origin_ratio(tokens)
+    if automation_ratio >= 0.5:
+        return automation_ratio, "Большая часть sequence сгенерирована automation/cascade."
+
+    return 0.0, ""
 
 
 def _area_context(tokens: tuple[ActionToken, ...]) -> tuple[float, str | None]:

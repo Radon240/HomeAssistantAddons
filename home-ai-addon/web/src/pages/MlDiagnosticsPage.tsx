@@ -95,6 +95,7 @@ export function MlDiagnosticsPage() {
             <StatCard label="Сырых sequence-кандидатов" value={data.rawSequenceCandidateCount} />
             <StatCard label="Отброшено семантикой" value={data.semanticRejectedCandidateCount} />
             <StatCard label="sensor -> sensor" value={data.sensorToSensorCandidateCount} />
+            <StatCard label="automation/cascade" value={data.automationGeneratedCandidateCount} />
             <StatCard label="Отброшено quality gates" value={data.qualityFilteredCandidateCount} />
             <StatCard label="Финальных рекомендаций" value={data.recommendationCount} />
           </section>

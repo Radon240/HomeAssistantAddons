@@ -70,6 +70,7 @@ def analyze_diagnostics(events: list[EventInput], options: AnalyzeOptions) -> Di
         raw_sequence_candidate_count=sequence_stats["raw"],
         semantic_rejected_candidate_count=sequence_stats["semantic_rejected"],
         sensor_to_sensor_candidate_count=sequence_stats["sensor_to_sensor"],
+        automation_generated_candidate_count=sequence_stats["automation_generated"],
         meaningful_candidate_count=sequence_stats["meaningful"],
         quality_filtered_candidate_count=quality_filtered,
         recommendation_count=len(recommendations),
@@ -89,6 +90,7 @@ def _sequence_diagnostics(
     raw = 0
     semantic_rejected = 0
     sensor_to_sensor = 0
+    automation_generated = 0
     meaningful = 0
 
     for session in sessions:
@@ -100,6 +102,8 @@ def _sequence_diagnostics(
                     continue
 
                 raw += 1
+                if _looks_automation_generated(tokens):
+                    automation_generated += 1
                 semantics = [token.semantics for token in tokens]
                 ok, _ = is_meaningful_automation(semantics)
                 if ok:
@@ -114,6 +118,7 @@ def _sequence_diagnostics(
         "raw": raw,
         "semantic_rejected": semantic_rejected,
         "sensor_to_sensor": sensor_to_sensor,
+        "automation_generated": automation_generated,
         "meaningful": meaningful,
     }
 
@@ -139,3 +144,23 @@ def _weight_bucket(weight: float) -> str:
     if weight < 0.7:
         return "0.35-0.69 medium"
     return "0.70-1.00 strong"
+
+
+def _looks_automation_generated(tokens: tuple[ActionToken, ...]) -> bool:
+    if len(tokens) < 2:
+        return False
+    trigger_context = tokens[0].context_id
+    if trigger_context and any(token.context_parent_id == trigger_context for token in tokens[1:]):
+        return True
+    generated = sum(
+        1
+        for token in tokens
+        if token.intelligence.origin.value in {"automation", "cascade"}
+    )
+    if generated / len(tokens) >= 0.5:
+        return True
+    parent_ids = [token.context_parent_id for token in tokens if token.context_parent_id]
+    if not parent_ids:
+        return False
+    _, count = Counter(parent_ids).most_common(1)[0]
+    return count / len(tokens) >= 0.5

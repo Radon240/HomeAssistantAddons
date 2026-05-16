@@ -41,20 +41,22 @@ def score_pattern(
     area_score = candidate.area_score
     intent_score = candidate.intent_score
     origin_score = 1.0 - candidate.automation_origin_ratio
+    existing_automation_score = 1.0 - candidate.existing_automation_score
     negative_score = 1.0 - candidate.negative_evidence
 
     base_confidence = round(
-        0.14 * association
-        + 0.13 * lift_norm
-        + 0.12 * weighted_support_score
-        + 0.14 * intent_score
-        + 0.12 * semantic_score
-        + 0.09 * area_score
-        + 0.08 * weekday_score
-        + 0.08 * gap_stability
+        0.13 * association
+        + 0.12 * lift_norm
+        + 0.11 * weighted_support_score
+        + 0.13 * intent_score
+        + 0.11 * semantic_score
+        + 0.08 * area_score
+        + 0.07 * weekday_score
+        + 0.07 * gap_stability
         + 0.06 * cadence_score
         + 0.04 * origin_score
-        + 0.10 * negative_score,
+        + 0.04 * existing_automation_score
+        + 0.04 * negative_score,
         4,
     )
 
@@ -63,14 +65,14 @@ def score_pattern(
             key="association",
             label="Последовательность",
             value=f"Шаги повторяются вместе в {int(association * 100)}% weighted cases после префикса",
-            weight=0.14,
+            weight=0.13,
             score=round(association, 4),
         ),
         ExplanationFactor(
             key="lift",
             label="Сила связи (lift)",
             value=f"В {candidate.lift:.1f}× чаще, чем случайное совпадение",
-            weight=0.13,
+            weight=0.12,
             score=round(lift_norm, 4),
         ),
         ExplanationFactor(
@@ -80,36 +82,47 @@ def score_pattern(
                 f"{candidate.support_count} raw sessions, weighted support "
                 f"{candidate.weighted_support:.2f} из {session_count}"
             ),
-            weight=0.12,
+            weight=0.11,
             score=round(weighted_support_score, 4),
         ),
         ExplanationFactor(
             key="intent",
             label="Намерение пользователя",
             value=f"Intent score {candidate.intent_score:.2f}; automation-origin ratio {candidate.automation_origin_ratio:.2f}",
-            weight=0.14,
+            weight=0.13,
             score=round(intent_score, 4),
         ),
         ExplanationFactor(
             key="semantic",
             label="Семантика устройств",
             value=candidate.semantic_reason,
-            weight=0.12,
+            weight=0.11,
             score=round(semantic_score, 4),
         ),
         ExplanationFactor(
             key="area",
             label="Зоны Home Assistant",
             value=candidate.area_hint or "Нет area metadata, зона не усиливает рекомендацию",
-            weight=0.09,
+            weight=0.08,
             score=round(area_score, 4),
         ),
         ExplanationFactor(
             key="negative_evidence",
             label="Negative evidence",
             value=f"Префикс не привёл к действию в {int(candidate.negative_evidence * 100)}% случаев",
-            weight=0.10,
+            weight=0.04,
             score=round(negative_score, 4),
+        ),
+        ExplanationFactor(
+            key="automation_origin",
+            label="Automation origin",
+            value=(
+                f"Automation-origin ratio {candidate.automation_origin_ratio:.2f}; "
+                f"existing automation score {candidate.existing_automation_score:.2f}. "
+                f"{candidate.existing_automation_reason}"
+            ),
+            weight=0.08,
+            score=round(min(origin_score, existing_automation_score), 4),
         ),
     ]
 
@@ -189,7 +202,9 @@ def passes_quality_gates(
         return False
     if candidate.intent_score < 0.35:
         return False
-    if candidate.automation_origin_ratio > 0.5:
+    if candidate.automation_origin_ratio >= 0.5:
+        return False
+    if candidate.existing_automation_score >= 0.5:
         return False
     if candidate.negative_evidence > 0.65:
         return False
