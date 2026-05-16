@@ -14,6 +14,11 @@ class EventInput(BaseModel):
     friendly_name: str | None = Field(default=None, alias="friendlyName")
     time_fired_utc: datetime = Field(alias="timeFiredUtc")
     received_at_utc: datetime = Field(alias="receivedAtUtc")
+    domain: str | None = None
+    device_class: str | None = Field(default=None, alias="deviceClass")
+    unit_of_measurement: str | None = Field(default=None, alias="unitOfMeasurement")
+    entity_category: str | None = Field(default=None, alias="entityCategory")
+    supported_features: int | None = Field(default=None, alias="supportedFeatures")
 
     model_config = {"populate_by_name": True}
 

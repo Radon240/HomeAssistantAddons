@@ -41,6 +41,10 @@ export type HomeAssistantEntityDto = {
   domain: string;
   state: string | null;
   friendlyName: string | null;
+  deviceClass: string | null;
+  unitOfMeasurement: string | null;
+  entityCategory: string | null;
+  supportedFeatures: number | null;
 };
 
 export type EntitiesListResponse = {

@@ -11,7 +11,12 @@ public sealed record AnalyzeEventPayload(
     string? NewState,
     string? FriendlyName,
     DateTimeOffset TimeFiredUtc,
-    DateTimeOffset ReceivedAtUtc);
+    DateTimeOffset ReceivedAtUtc,
+    string? Domain = null,
+    string? DeviceClass = null,
+    string? UnitOfMeasurement = null,
+    string? EntityCategory = null,
+    long? SupportedFeatures = null);
 
 public sealed record AnalyzeOptionsPayload(
     int MinSupport,
@@ -105,6 +110,7 @@ public sealed record AnomalyDetectionOptionsPayload(
     int RollingWindowHours,
     double ZScoreThreshold,
     double UnusualHourMaxRatio,
+    double MinNumericDelta,
     double MinScore,
     double MediumSeverityThreshold,
     double HighSeverityThreshold,

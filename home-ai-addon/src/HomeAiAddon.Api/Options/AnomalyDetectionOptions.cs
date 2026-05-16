@@ -26,6 +26,8 @@ public sealed class AnomalyDetectionOptions
 
     public double UnusualHourMaxRatio { get; set; } = 0.05;
 
+    public double MinNumericDelta { get; set; } = 0.5;
+
     public double MinScore { get; set; } = 0.55;
 
     public double MediumSeverityThreshold { get; set; } = 0.7;

@@ -46,6 +46,10 @@ public sealed class HomeAssistantEntitiesService(
             var entityId = idProp.GetString() ?? string.Empty;
             string? state = null;
             string? friendlyName = null;
+            string? deviceClass = null;
+            string? unitOfMeasurement = null;
+            string? entityCategory = null;
+            long? supportedFeatures = null;
 
             if (item.TryGetProperty("state", out var stateProp) && stateProp.ValueKind == JsonValueKind.String)
             {
@@ -53,21 +57,43 @@ public sealed class HomeAssistantEntitiesService(
             }
 
             if (item.TryGetProperty("attributes", out var attrs) &&
-                attrs.ValueKind == JsonValueKind.Object &&
-                attrs.TryGetProperty("friendly_name", out var fn) &&
-                fn.ValueKind == JsonValueKind.String)
+                attrs.ValueKind == JsonValueKind.Object)
             {
-                friendlyName = fn.GetString();
+                friendlyName = ReadString(attrs, "friendly_name");
+                deviceClass = ReadString(attrs, "device_class");
+                unitOfMeasurement = ReadString(attrs, "unit_of_measurement");
+                entityCategory = ReadString(attrs, "entity_category");
+                if (attrs.TryGetProperty("supported_features", out var sf) &&
+                    sf.ValueKind == JsonValueKind.Number &&
+                    sf.TryGetInt64(out var value))
+                {
+                    supportedFeatures = value;
+                }
             }
 
             var domain = entityId.Contains('.', StringComparison.Ordinal)
                 ? entityId[..entityId.IndexOf('.')]
                 : entityId;
 
-            list.Add(new HomeAssistantEntityDto(entityId, domain, state, friendlyName));
+            list.Add(new HomeAssistantEntityDto(
+                entityId,
+                domain,
+                state,
+                friendlyName,
+                deviceClass,
+                unitOfMeasurement,
+                entityCategory,
+                supportedFeatures));
         }
 
         return list.OrderBy(e => e.EntityId, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static string? ReadString(JsonElement attrs, string name)
+    {
+        return attrs.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String
+            ? prop.GetString()
+            : null;
     }
 }
 
@@ -75,4 +101,8 @@ public sealed record HomeAssistantEntityDto(
     string EntityId,
     string Domain,
     string? State,
-    string? FriendlyName);
+    string? FriendlyName,
+    string? DeviceClass,
+    string? UnitOfMeasurement,
+    string? EntityCategory,
+    long? SupportedFeatures);

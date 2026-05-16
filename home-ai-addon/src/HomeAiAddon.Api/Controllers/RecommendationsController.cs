@@ -1,5 +1,6 @@
 using HomeAiAddon.Api.BehaviorAnalysis;
 using HomeAiAddon.Api.Data;
+using HomeAiAddon.Api.HomeAssistant;
 using HomeAiAddon.Api.Options;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -12,6 +13,7 @@ public sealed class RecommendationsController(
     IStateChangeEventStore store,
     IBehaviorAnalysisClient analysisClient,
     AnalysisEntityFilter analysisEntityFilter,
+    HomeAssistantEntitiesService entitiesService,
     IOptions<BehaviorAnalysisOptions> options,
     ILogger<RecommendationsController> logger) : ControllerBase
 {
@@ -71,15 +73,9 @@ public sealed class RecommendationsController(
                 batch.ScannedCount,
                 batch.ExcludedCount);
 
+            var entityMetadata = await LoadEntityMetadataAsync(entitiesService, cancellationToken);
             var request = new AnalyzeRequestPayload(
-                batch.Events.Select(e => new AnalyzeEventPayload(
-                    e.Id,
-                    e.EntityId,
-                    e.OldState,
-                    e.NewState,
-                    e.FriendlyName,
-                    e.TimeFiredUtc,
-                    e.ReceivedAtUtc)).ToList(),
+                batch.Events.Select(e => ToAnalyzeEventPayload(e, entityMetadata)).ToList(),
                 new AnalyzeOptionsPayload(
                     opts.MinSupport,
                     opts.MinConfidence,
@@ -185,6 +181,34 @@ public sealed class RecommendationsController(
             logger.LogError(ex, "Feedback failed for {RecommendationId}", id);
             return StatusCode(500, new { error = ex.Message });
         }
+    }
+
+    private static async Task<IReadOnlyDictionary<string, HomeAssistantEntityDto>> LoadEntityMetadataAsync(
+        HomeAssistantEntitiesService entitiesService,
+        CancellationToken cancellationToken)
+    {
+        var entities = await entitiesService.GetEntitiesAsync(cancellationToken);
+        return entities.ToDictionary(e => e.EntityId, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static AnalyzeEventPayload ToAnalyzeEventPayload(
+        StateChangeEventDto e,
+        IReadOnlyDictionary<string, HomeAssistantEntityDto> metadata)
+    {
+        metadata.TryGetValue(e.EntityId, out var meta);
+        return new AnalyzeEventPayload(
+            e.Id,
+            e.EntityId,
+            e.OldState,
+            e.NewState,
+            e.FriendlyName ?? meta?.FriendlyName,
+            e.TimeFiredUtc,
+            e.ReceivedAtUtc,
+            meta?.Domain,
+            meta?.DeviceClass,
+            meta?.UnitOfMeasurement,
+            meta?.EntityCategory,
+            meta?.SupportedFeatures);
     }
 }
 

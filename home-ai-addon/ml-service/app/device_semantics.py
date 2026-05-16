@@ -87,6 +87,8 @@ MEANINGFUL_BINARY_HINTS = {
     "moisture",
     "water",
     "vibration",
+    "problem",
+    "safety",
 }
 
 NOISY_ENTITY_HINTS = {
@@ -131,6 +133,21 @@ PASSIVE_SENSOR_HINTS = {
     "linkquality",
 }
 
+ACTION_DEVICE_CLASSES = {
+    "outlet",
+    "switch",
+    "light",
+    "garage",
+    "door",
+    "window",
+    "shade",
+    "curtain",
+    "lock",
+    "temperature",
+    "heat",
+    "cool",
+}
+
 
 @dataclass(frozen=True)
 class DeviceSemantics:
@@ -148,15 +165,20 @@ class DeviceSemantics:
 
 def classify_event(event: EventInput) -> DeviceSemantics:
     entity_id = event.entity_id.strip()
-    domain = entity_id.split(".", 1)[0] if "." in entity_id else entity_id
+    domain = (event.domain or "").strip() or (
+        entity_id.split(".", 1)[0] if "." in entity_id else entity_id
+    )
     text = _semantic_text(entity_id, event.friendly_name)
+    device_class = (event.device_class or "").strip().lower()
+    unit = (event.unit_of_measurement or "").strip().lower()
+    entity_category = (event.entity_category or "").strip().lower()
     new_state = _norm_state(event.new_state)
     old_state = _norm_state(event.old_state)
 
     system_event = _is_system_state(new_state) or _is_system_state(old_state)
-    noisy = _is_noisy_entity(domain, text)
-    role = _classify_role(domain, text)
-    significant = _is_significant_change(old_state, new_state, domain, text)
+    noisy = _is_noisy_entity(domain, text, device_class, entity_category)
+    role = _classify_role(domain, text, device_class, entity_category)
+    significant = _is_significant_change(old_state, new_state, domain, text, device_class, unit)
 
     can_trigger = _can_trigger(domain, role, text, new_state, system_event, noisy, significant)
     can_action = _can_action(domain, role, new_state, system_event, noisy, significant)
@@ -218,7 +240,9 @@ def should_ignore_for_anomaly(event: EventInput) -> tuple[bool, str]:
     return False, semantics.reason
 
 
-def _classify_role(domain: str, text: str) -> DeviceRole:
+def _classify_role(domain: str, text: str, device_class: str, entity_category: str) -> DeviceRole:
+    if entity_category in {"diagnostic", "config"}:
+        return DeviceRole.READ_ONLY
     if domain in ACTUATOR_DOMAINS:
         return DeviceRole.ACTUATOR
     if domain in HYBRID_DOMAINS:
@@ -227,7 +251,7 @@ def _classify_role(domain: str, text: str) -> DeviceRole:
         return DeviceRole.SENSOR
     if domain in CONTEXT_DOMAINS or domain in READ_ONLY_DOMAINS:
         return DeviceRole.READ_ONLY
-    if any(hint in text for hint in MEANINGFUL_BINARY_HINTS):
+    if device_class in MEANINGFUL_BINARY_HINTS or any(hint in text for hint in MEANINGFUL_BINARY_HINTS):
         return DeviceRole.SENSOR
     return DeviceRole.READ_ONLY
 
@@ -294,13 +318,24 @@ def _is_system_state(value: str) -> bool:
     return value in SYSTEM_STATE_VALUES
 
 
-def _is_noisy_entity(domain: str, text: str) -> bool:
-    if domain == "sensor" and any(hint in text for hint in NOISY_ENTITY_HINTS):
+def _is_noisy_entity(domain: str, text: str, device_class: str, entity_category: str) -> bool:
+    if entity_category == "diagnostic":
+        return True
+    if domain == "sensor" and (
+        device_class in NOISY_ENTITY_HINTS or any(hint in text for hint in NOISY_ENTITY_HINTS)
+    ):
         return True
     return domain in {"update"}
 
 
-def _is_significant_change(old_state: str, new_state: str, domain: str, text: str) -> bool:
+def _is_significant_change(
+    old_state: str,
+    new_state: str,
+    domain: str,
+    text: str,
+    device_class: str,
+    unit: str,
+) -> bool:
     if old_state == new_state:
         return False
     if _is_system_state(new_state):
@@ -312,9 +347,11 @@ def _is_significant_change(old_state: str, new_state: str, domain: str, text: st
             delta = abs(new_num - old_num)
             baseline = max(abs(old_num), abs(new_num), 1.0)
             relative = delta / baseline
-            if "battery" in text:
+            if device_class == "battery" or "battery" in text or unit == "%":
                 return delta >= 2.0
-            if any(hint in text for hint in {"temperature", "humidity", "illuminance"}):
+            if device_class in {"temperature", "humidity", "illuminance"} or any(
+                hint in text for hint in {"temperature", "humidity", "illuminance"}
+            ):
                 return delta >= 1.0 and relative >= 0.01
             return delta >= 0.5 and relative >= 0.02
     return True
