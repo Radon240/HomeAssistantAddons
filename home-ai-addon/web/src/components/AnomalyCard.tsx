@@ -32,11 +32,25 @@ function formatDate(iso: string): string {
   }
 }
 
+function metricNumber(metrics: Record<string, unknown>, key: string): number | null {
+  const value = metrics[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function metricString(metrics: Record<string, unknown>, key: string): string | null {
+  const value = metrics[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 export function AnomalyCard({ item }: AnomalyCardProps) {
   const scorePercent = Math.round(item.score * 100);
   const severityLabel = SEVERITY_LABELS[item.severity] ?? item.severity;
   const typeLabel = TYPE_LABELS[item.anomalyType] ?? item.anomalyType;
   const methodLabel = METHOD_LABELS[item.method] ?? item.method;
+  const origin = metricString(item.metrics, "origin");
+  const intentScore = metricNumber(item.metrics, "intentScore");
+  const stateImportance = metricNumber(item.metrics, "stateImportance");
+  const eventWeight = metricNumber(item.metrics, "eventWeight");
 
   return (
     <article className={`event-item anomaly-card anomaly-severity-${item.severity}`}>
@@ -56,6 +70,16 @@ export function AnomalyCard({ item }: AnomalyCardProps) {
       <p className="muted" style={{ margin: "8px 0" }}>
         {item.explanation}
       </p>
+      {origin || intentScore !== null || stateImportance !== null || eventWeight !== null ? (
+        <div className="chip-row" style={{ margin: "8px 0" }}>
+          {origin ? <span className="chip">origin: {origin}</span> : null}
+          {intentScore !== null ? <span className="chip">intent: {Math.round(intentScore * 100)}%</span> : null}
+          {stateImportance !== null ? (
+            <span className="chip">state: {Math.round(stateImportance * 100)}%</span>
+          ) : null}
+          {eventWeight !== null ? <span className="chip">weight: {Math.round(eventWeight * 100)}%</span> : null}
+        </div>
+      ) : null}
       <div className="confidence-bar-wrap" aria-label={`Оценка аномалии ${scorePercent}%`}>
         <div
           className={`confidence-bar anomaly-score-bar severity-bar-${item.severity}`}

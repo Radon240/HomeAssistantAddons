@@ -7,6 +7,11 @@ export interface SequenceStep {
   friendlyName: string | null;
   areaId: string | null;
   areaName: string | null;
+  origin: string | null;
+  intentScore: number;
+  stateImportance: number;
+  eventWeight: number;
+  intelligenceExplanation: string;
 }
 
 export interface SuggestedAutomation {
@@ -83,6 +88,8 @@ export interface RecommendationDiagnosticsResponse {
   filterReasons: DiagnosticsCounter[];
   semanticRoles: DiagnosticsCounter[];
   semanticIntents: DiagnosticsCounter[];
+  originTypes: DiagnosticsCounter[];
+  weightBuckets: DiagnosticsCounter[];
   message: string | null;
 }
 

@@ -124,6 +124,11 @@ def _to_recommendation(
             friendly_name=token.friendly_name,
             area_id=token.area_id,
             area_name=token.area_name,
+            origin=token.intelligence.origin.value,
+            intent_score=token.intelligence.intent_score,
+            state_importance=token.intelligence.state_importance,
+            event_weight=token.intelligence.event_weight,
+            intelligence_explanation=token.intelligence.explanation,
         )
         for token in candidate.tokens
     ]

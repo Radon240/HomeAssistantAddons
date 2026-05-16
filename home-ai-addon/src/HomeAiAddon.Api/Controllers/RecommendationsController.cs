@@ -146,6 +146,8 @@ public sealed class RecommendationsController(
                     [],
                     [],
                     [],
+                    [],
+                    [],
                     "Недостаточно событий для диагностики."));
             }
 
@@ -170,6 +172,8 @@ public sealed class RecommendationsController(
                 result.FilterReasons,
                 result.SemanticRoles,
                 result.SemanticIntents,
+                result.OriginTypes,
+                result.WeightBuckets,
                 null));
         }
         catch (HttpRequestException ex)
@@ -440,4 +444,6 @@ public sealed record RecommendationDiagnosticsResponse(
     IReadOnlyList<DiagnosticsCounterPayload> FilterReasons,
     IReadOnlyList<DiagnosticsCounterPayload> SemanticRoles,
     IReadOnlyList<DiagnosticsCounterPayload> SemanticIntents,
+    IReadOnlyList<DiagnosticsCounterPayload> OriginTypes,
+    IReadOnlyList<DiagnosticsCounterPayload> WeightBuckets,
     string? Message);

@@ -72,6 +72,11 @@ class SequenceStep(BaseModel):
     friendly_name: str | None = Field(default=None, alias="friendlyName")
     area_id: str | None = Field(default=None, alias="areaId")
     area_name: str | None = Field(default=None, alias="areaName")
+    origin: str | None = None
+    intent_score: float = Field(default=0.0, alias="intentScore")
+    state_importance: float = Field(default=0.0, alias="stateImportance")
+    event_weight: float = Field(default=0.0, alias="eventWeight")
+    intelligence_explanation: str = Field(default="", alias="intelligenceExplanation")
 
     model_config = {"populate_by_name": True}
 
@@ -241,6 +246,8 @@ class DiagnosticsResponse(BaseModel):
     filter_reasons: list[DiagnosticsCounter] = Field(alias="filterReasons")
     semantic_roles: list[DiagnosticsCounter] = Field(alias="semanticRoles")
     semantic_intents: list[DiagnosticsCounter] = Field(alias="semanticIntents")
+    origin_types: list[DiagnosticsCounter] = Field(alias="originTypes")
+    weight_buckets: list[DiagnosticsCounter] = Field(alias="weightBuckets")
     options_used: dict[str, Any] = Field(alias="optionsUsed")
 
     model_config = {"populate_by_name": True}

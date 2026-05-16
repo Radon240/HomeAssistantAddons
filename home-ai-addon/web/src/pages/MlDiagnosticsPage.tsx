@@ -111,6 +111,8 @@ export function MlDiagnosticsPage() {
           <CounterList title="Причины фильтрации событий" items={data.filterReasons} />
           <CounterList title="Роли устройств" items={data.semanticRoles} />
           <CounterList title="Intent событий" items={data.semanticIntents} />
+          <CounterList title="Источник событий" items={data.originTypes} />
+          <CounterList title="Behavioral weight buckets" items={data.weightBuckets} />
         </>
       ) : loading ? (
         <section className="card muted">Загрузка диагностики...</section>

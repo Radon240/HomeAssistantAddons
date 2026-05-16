@@ -66,6 +66,8 @@ public sealed record DiagnosticsResponsePayload(
     IReadOnlyList<DiagnosticsCounterPayload> FilterReasons,
     IReadOnlyList<DiagnosticsCounterPayload> SemanticRoles,
     IReadOnlyList<DiagnosticsCounterPayload> SemanticIntents,
+    IReadOnlyList<DiagnosticsCounterPayload> OriginTypes,
+    IReadOnlyList<DiagnosticsCounterPayload> WeightBuckets,
     IReadOnlyDictionary<string, object>? OptionsUsed);
 
 public sealed record RecommendationPayload(
@@ -129,7 +131,12 @@ public sealed record SequenceStepPayload(
     string? NewState,
     string? FriendlyName,
     string? AreaId,
-    string? AreaName);
+    string? AreaName,
+    string? Origin,
+    double IntentScore,
+    double StateImportance,
+    double EventWeight,
+    string IntelligenceExplanation);
 
 public sealed record SuggestedAutomationPayload(
     string TriggerEntityId,

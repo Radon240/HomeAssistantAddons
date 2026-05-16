@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from app.device_semantics import DeviceRole, classify_event, is_meaningful_automation
+from app.event_intelligence import score_event_intelligence
 from app.models import AnalyzeOptions, DiagnosticsCounter, DiagnosticsResponse, EventInput
 from app.pattern_miner import _fits_step_gaps, _step_gaps
 from app.recommender import build_recommendation_pipeline, rank_recommendations
@@ -14,6 +15,8 @@ def analyze_diagnostics(events: list[EventInput], options: AnalyzeOptions) -> Di
     filtered: Counter[str] = Counter()
     roles: Counter[str] = Counter()
     intents: Counter[str] = Counter()
+    origins: Counter[str] = Counter()
+    weight_buckets: Counter[str] = Counter()
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=options.lookback_hours)
     considered = 0
@@ -27,8 +30,11 @@ def analyze_diagnostics(events: list[EventInput], options: AnalyzeOptions) -> Di
 
         considered += 1
         semantics = classify_event(event)
+        intelligence = score_event_intelligence(event, semantics)
         roles[semantics.role.value] += 1
         intents[semantics.intent.value] += 1
+        origins[intelligence.origin.value] += 1
+        weight_buckets[_weight_bucket(intelligence.event_weight)] += 1
 
         if semantics.system_event:
             filtered["system_or_unavailable"] += 1
@@ -41,6 +47,9 @@ def analyze_diagnostics(events: list[EventInput], options: AnalyzeOptions) -> Di
             continue
         if not semantics.can_trigger and not semantics.can_action:
             filtered["context_only"] += 1
+            continue
+        if intelligence.event_weight <= 0.02 or intelligence.state_importance <= 0.02:
+            filtered["low_behavioral_weight"] += 1
             continue
         eligible += 1
 
@@ -67,6 +76,8 @@ def analyze_diagnostics(events: list[EventInput], options: AnalyzeOptions) -> Di
         filter_reasons=_to_counters(filtered),
         semantic_roles=_to_counters(roles),
         semantic_intents=_to_counters(intents),
+        origin_types=_to_counters(origins),
+        weight_buckets=_to_counters(weight_buckets),
         options_used=options.model_dump(by_alias=True),
     )
 
@@ -118,3 +129,13 @@ def _to_counters(counter: Counter[str]) -> list[DiagnosticsCounter]:
         DiagnosticsCounter(key=key, count=count)
         for key, count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))
     ]
+
+
+def _weight_bucket(weight: float) -> str:
+    if weight < 0.1:
+        return "0.00-0.09 noise"
+    if weight < 0.35:
+        return "0.10-0.34 weak"
+    if weight < 0.7:
+        return "0.35-0.69 medium"
+    return "0.70-1.00 strong"

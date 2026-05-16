@@ -237,6 +237,16 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
               {step.entityId}
               {step.areaName ? ` · ${step.areaName}` : ""}
             </span>
+            <span className="muted" style={{ fontSize: 12 }}>
+              origin: {step.origin ?? "unknown"} · intent {Math.round((step.intentScore ?? 0) * 100)}% ·
+              state {Math.round((step.stateImportance ?? 0) * 100)}% · weight{" "}
+              {Math.round((step.eventWeight ?? 0) * 100)}%
+            </span>
+            {step.intelligenceExplanation ? (
+              <span className="muted" style={{ fontSize: 11 }}>
+                {step.intelligenceExplanation}
+              </span>
+            ) : null}
           </li>
         ))}
       </ol>
