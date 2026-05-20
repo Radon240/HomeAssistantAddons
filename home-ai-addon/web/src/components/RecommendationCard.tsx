@@ -170,6 +170,7 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
   const learned = Math.abs(feedbackScore - 1) > 0.02;
   const lift = typeof item.lift === "number" ? item.lift : 0;
   const factors = item.explanationFactors ?? [];
+  const isStub = item.isStub === true;
 
   async function sendFeedback(next: FeedbackVerdict) {
     if (submitting || verdict) {
@@ -179,10 +180,12 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
     setSubmitting(true);
     setError(null);
     try {
-      await submitRecommendationFeedback(item.id, {
-        verdict: next,
-        ...buildFeedbackPayload(item)
-      });
+      if (!isStub) {
+        await submitRecommendationFeedback(item.id, {
+          verdict: next,
+          ...buildFeedbackPayload(item)
+        });
+      }
       setVerdict(next);
       onFeedback?.(item.id, next);
     } catch (e) {
@@ -196,7 +199,10 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
     <article className="event-item recommendation-card">
       <div className="recommendation-header">
         <h3 style={{ margin: 0, fontSize: "1.05rem" }}>{item.title}</h3>
-        <span className="confidence-badge">{confidencePercent}%</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isStub ? <span className="muted">Демо</span> : null}
+          <span className="confidence-badge">{confidencePercent}%</span>
+        </div>
       </div>
       <CadenceRow item={item} cadencePercent={cadencePercent} lift={lift} />
       {item.whyGenerated ? (
@@ -261,12 +267,18 @@ export function RecommendationCard({ item, onFeedback }: RecommendationCardProps
           {JSON.stringify(item.suggestedAutomation, null, 2)}
         </pre>
       </details>
-      <RecommendationFeedback
-        verdict={verdict}
-        submitting={submitting}
-        onUseful={() => void sendFeedback("useful")}
-        onDismiss={() => void sendFeedback("not_useful")}
-      />
+      {isStub ? (
+        <p className="muted" style={{ fontSize: 12, marginTop: 10, marginBottom: 0 }}>
+          Это демонстрационная карточка для показа интерфейса.
+        </p>
+      ) : (
+        <RecommendationFeedback
+          verdict={verdict}
+          submitting={submitting}
+          onUseful={() => void sendFeedback("useful")}
+          onDismiss={() => void sendFeedback("not_useful")}
+        />
+      )}
       {error ? (
         <p className="bad" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
           {error}

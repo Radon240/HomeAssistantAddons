@@ -34,6 +34,7 @@ export interface ExplanationFactor {
 
 export interface Recommendation {
   id: string;
+  isStub?: boolean;
   patternKey: string;
   sequence: SequenceStep[];
   supportCount: number;

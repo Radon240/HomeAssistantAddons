@@ -1,0 +1,32 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "home-ai-addon", "home-ai-addon", "{24C0388D-66CF-81BE-58A9-DBFB212AA06B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{02869D1D-1C1C-6649-2C77-5ABC87385178}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HomeAiAddon.Api", "home-ai-addon\src\HomeAiAddon.Api\HomeAiAddon.Api.csproj", "{C7F9C4A9-6233-868F-16F2-205317EAB166}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C7F9C4A9-6233-868F-16F2-205317EAB166}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C7F9C4A9-6233-868F-16F2-205317EAB166}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C7F9C4A9-6233-868F-16F2-205317EAB166}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C7F9C4A9-6233-868F-16F2-205317EAB166}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{02869D1D-1C1C-6649-2C77-5ABC87385178} = {24C0388D-66CF-81BE-58A9-DBFB212AA06B}
+		{C7F9C4A9-6233-868F-16F2-205317EAB166} = {02869D1D-1C1C-6649-2C77-5ABC87385178}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0C0F5677-D1C0-4AAD-976A-3FD5B8E400BD}
+	EndGlobalSection
+EndGlobal
